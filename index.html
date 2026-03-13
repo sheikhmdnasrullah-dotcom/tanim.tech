@@ -321,6 +321,15 @@
       flex-shrink: 0;
     }
 
+    /* monospace labels, sans-serif values inside the email card */
+    .email-card .field-value {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.75;
+      word-break: break-word;
+    }
+
     .field-value {
       font-size: 13px;
       color: var(--text);
@@ -334,15 +343,48 @@
     }
 
     .field-body .field-value {
-      font-size: 13px;
-      white-space: pre-wrap;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.8;
+      white-space: normal;
     }
 
     /* ─── BUTTONS ────────────────────────────────── */
     .btn-row {
       display: flex;
       gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .btn-copy-row {
       margin-bottom: 20px;
+    }
+
+    .btn-copy {
+      width: 100%;
+      padding: 12px 20px;
+      background: transparent;
+      color: var(--text-muted);
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+      text-align: center;
+    }
+
+    .btn-copy:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-light);
+    }
+
+    .btn-copy.copied {
+      border-color: var(--green);
+      color: var(--green);
+      background: var(--green-bg);
     }
 
     .btn-solid {
@@ -545,6 +587,10 @@
         <div class="btn-row">
           <button class="btn-solid" id="mailto-btn" onclick="openMailApp()">// Open in Mail App</button>
           <button class="btn-outline" onclick="resetToStage1()">// Run New Prospect</button>
+        </div>
+
+        <div class="btn-copy-row">
+          <button class="btn-copy" id="copy-btn" onclick="copyEmailToClipboard()">// Copy Email (with hyperlink)</button>
         </div>
 
         <button class="dossier-toggle" id="dossier-toggle-btn" onclick="toggleDossier()">// View Research Dossier</button>
@@ -1014,11 +1060,45 @@ Nothing else. No commentary, no notes, no quality check output.`;
 
   /* ── Mail App ───────────────────────────────── */
   function openMailApp() {
+    // Use CRLF so every mail client preserves paragraph spacing
+    const bodyForMailto = emailBody.replace(/\n/g, '\r\n');
     const mailto =
       'mailto:' + encodeURIComponent(currentEmail) +
       '?subject=' + encodeURIComponent(emailSubject) +
-      '&body=' + encodeURIComponent(emailBody);
+      '&body=' + encodeURIComponent(bodyForMailto);
     window.location.href = mailto;
+  }
+
+  /* ── Copy to Clipboard (HTML + plain text) ──── */
+  async function copyEmailToClipboard() {
+    const btn = document.getElementById('copy-btn');
+
+    // HTML version: subject line + blank line + body with "video" hyperlinked
+    const subjectHtml = escapeHtml(emailSubject);
+    const bodyHtml    = buildBodyHtml(emailBody);
+    const fullHtml    = `<p style="margin:0 0 16px"><b>Subject:</b> ${subjectHtml}</p>${bodyHtml}`;
+
+    // Plain text fallback
+    const fullPlain = `Subject: ${emailSubject}\n\n${emailBody}`;
+
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html':  new Blob([fullHtml],  { type: 'text/html' }),
+          'text/plain': new Blob([fullPlain], { type: 'text/plain' })
+        })
+      ]);
+    } catch (_) {
+      // Fallback for browsers that don't support ClipboardItem
+      try { await navigator.clipboard.writeText(fullPlain); } catch (_2) { /* silent */ }
+    }
+
+    btn.textContent = '// Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '// Copy Email (with hyperlink)';
+      btn.classList.remove('copied');
+    }, 2000);
   }
 
   /* ── Dossier Toggle ─────────────────────────── */
