@@ -1227,13 +1227,29 @@ Nothing else. No commentary, no notes, no quality check output.`;
 
     const subjectHtml = escapeHtml(emailSubject);
     const bodyHtml    = buildBodyHtml(emailBody);
-    const fullHtml    = `<p style="margin:0 0 6px"><b>To:</b> ${escapeHtml(currentEmail)}</p><p style="margin:0 0 16px"><b>Subject:</b> ${subjectHtml}</p>${bodyHtml}`;
+    const fullHtml    = `<p style="margin:0 0 6px;font-family:sans-serif;font-size:14px"><b>To:</b> ${escapeHtml(currentEmail)}</p><p style="margin:0 0 16px;font-family:sans-serif;font-size:14px"><b>Subject:</b> ${subjectHtml}</p><div style="font-family:sans-serif;font-size:14px;line-height:1.7">${bodyHtml}</div>`;
     const fullPlain   = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${emailBody}`;
 
     let copied = false;
 
-    // 1. Rich HTML copy — preserves the hyperlink
-    if (navigator.clipboard && window.ClipboardItem) {
+    // 1. Select + execCommand — mirrors manual copy, preserves hyperlinks reliably
+    const ghost = document.createElement('div');
+    ghost.innerHTML = fullHtml;
+    ghost.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:600px;';
+    document.body.appendChild(ghost);
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(ghost);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      copied = document.execCommand('copy');
+      sel.removeAllRanges();
+    } catch (_) {}
+    document.body.removeChild(ghost);
+
+    // 2. ClipboardItem fallback
+    if (!copied && navigator.clipboard && window.ClipboardItem) {
       try {
         await navigator.clipboard.write([
           new ClipboardItem({
@@ -1245,24 +1261,9 @@ Nothing else. No commentary, no notes, no quality check output.`;
       } catch (_) {}
     }
 
-    // 2. Plain text fallback (loses hyperlink but still copies content)
+    // 3. Plain text last resort
     if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
-      try {
-        await navigator.clipboard.writeText(fullPlain);
-        copied = true;
-      } catch (_) {}
-    }
-
-    // 3. Legacy execCommand fallback
-    if (!copied) {
-      const ta = document.createElement('textarea');
-      ta.value = fullPlain;
-      ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;pointer-events:none;';
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      try { copied = document.execCommand('copy'); } catch (_) {}
-      document.body.removeChild(ta);
+      try { await navigator.clipboard.writeText(fullPlain); copied = true; } catch (_) {}
     }
 
     if (copied) {
