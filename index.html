@@ -1223,7 +1223,13 @@ Nothing else. No commentary, no notes, no quality check output.`;
       'mailto:' + encodeURIComponent(currentEmail) +
       '?subject=' + encodeURIComponent(emailSubject) +
       '&body=' + encodeURIComponent(bodyForMailto);
-    window.location.href = mailto;
+    // Anchor click works on both desktop and mobile (avoids page-navigation issues on iOS/Android)
+    const a = document.createElement('a');
+    a.href = mailto;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   /* ── Copy to Clipboard ───────────────────────── */
@@ -1250,27 +1256,21 @@ Nothing else. No commentary, no notes, no quality check output.`;
       } catch (_) {}
     }
 
-    // 2. execCommand fallback — also copies rich text in most browsers
-    if (!copied) {
-      const ghost = document.createElement('div');
-      ghost.innerHTML = fullHtml;
-      ghost.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:600px;';
-      document.body.appendChild(ghost);
-      try {
-        const range = document.createRange();
-        range.selectNodeContents(ghost);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-        copied = document.execCommand('copy');
-        sel.removeAllRanges();
-      } catch (_) {}
-      document.body.removeChild(ghost);
-    }
-
-    // 3. Plain text last resort
+    // 2. writeText — reliable on modern mobile browsers (iOS Safari 13+, Android Chrome)
     if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
       try { await navigator.clipboard.writeText(fullPlain); copied = true; } catch (_) {}
+    }
+
+    // 3. execCommand fallback (old browsers) — textarea in-viewport so iOS can select it
+    if (!copied) {
+      const ta = document.createElement('textarea');
+      ta.value = fullPlain;
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try { copied = document.execCommand('copy'); } catch (_) {}
+      document.body.removeChild(ta);
     }
 
     if (copied) {
