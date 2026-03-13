@@ -780,8 +780,13 @@ Quick intro ("I'm Tanim, I run a creative team..."). Explain core services simpl
 SECTION 3 - THE ADD-ON (1-2 sentences):
 Transition naturally with "Also..." or "On a separate note..." or "I also noticed...". Mention the specific add-on from the dossier. Connect it to something you observed. Keep it casual, like a helpful suggestion between friends. NOT a hard pitch.
 
-SECTION 4 - THE CLOSE (1-2 sentences):
-Soft, low-pressure ask. Something like "Would love to chat if any of this sounds helpful". Sign off with just: Tanim
+SECTION 4 - THE CLOSE (mandatory, use word for word, no changes):
+This closing is fixed. Do not rewrite it. Do not paraphrase it. Copy it exactly:
+
+If you're available, we can sit down and chat to figure out how we can make things work. For a quick recap, you can check out the video I recorded.
+Looking forward to chatting soon.
+Best,
+Tanim
 
 HARD CONSTRAINTS:
 EMAIL LENGTH: 120-180 words total.
@@ -950,8 +955,29 @@ Nothing else. No commentary, no notes, no quality check output.`;
   }
 
   function stripEmDashes(str) {
-    // Replace em dash and its common lookalikes with a comma+space
+    // Replace em dash and its common lookalikes
     return str.replace(/\u2014/g, ',').replace(/\u2013/g, '-').replace(/--/g, '-');
+  }
+
+  const VIDEO_URL = 'https://drive.google.com/file/d/1_YYH_5or_8JiDDjROygO_xzbyBwO1bjL/view?usp=sharing';
+
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // For the on-screen preview: safe HTML with "video" as a clickable link
+  function buildBodyHtml(plain) {
+    let html = escapeHtml(plain).replace(/\n/g, '<br>');
+    html = html.replace(
+      /the video I recorded/gi,
+      `the <a href="${VIDEO_URL}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px">video</a> I recorded`
+    );
+    return html;
+  }
+
+  // For the mailto body: plain text only, URL stays hidden — user sees "video" as the link word in the preview
+  function buildBodyPlain(plain) {
+    return plain;
   }
 
   function parseAndShowEmail(raw) {
@@ -962,7 +988,6 @@ Nothing else. No commentary, no notes, no quality check output.`;
     for (let i = 0; i < lines.length; i++) {
       if (/^SUBJECT:\s*/i.test(lines[i])) {
         subjectLine = lines[i].replace(/^SUBJECT:\s*/i, '').trim();
-        // Body starts after the next blank line
         for (let j = i + 1; j < lines.length; j++) {
           if (lines[j].trim() === '') {
             bodyStart = j + 1;
@@ -977,11 +1002,11 @@ Nothing else. No commentary, no notes, no quality check output.`;
     subjectLine  = stripEmDashes(subjectLine);
 
     emailSubject = subjectLine;
-    emailBody    = body;
+    emailBody    = buildBodyPlain(body); // plain text goes into mailto
 
-    document.getElementById('out-to').textContent      = currentEmail;
-    document.getElementById('out-subject').textContent = subjectLine;
-    document.getElementById('out-body').textContent    = body;
+    document.getElementById('out-to').textContent       = currentEmail;
+    document.getElementById('out-subject').textContent  = subjectLine;
+    document.getElementById('out-body').innerHTML       = buildBodyHtml(body); // HTML for preview
     document.getElementById('dossier-text').textContent = dossierText;
 
     showStage('stage-5');
