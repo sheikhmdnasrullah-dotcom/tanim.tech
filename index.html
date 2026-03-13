@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tanim Research Engine</title>
+  <style>
+    :root {
+      --bg: #f5f4ff;
+      --surface: #ffffff;
+      --surface-alt: #f0eeff;
+      --border: #ddd6fe;
+      --border-strong: #c4b5fd;
+      --text: #1a0a2e;
+      --text-muted: #7c6fa0;
+      --text-dim: #a89cc8;
+      --accent: #7c3aed;
+      --accent-dark: #6d28d9;
+      --accent-light: #ede9fe;
+      --green: #16a34a;
+      --green-bg: #f0fdf4;
+      --green-border: #bbf7d0;
+      --red: #dc2626;
+      --red-bg: #fff5f5;
+      --red-border: #fecaca;
+      --shadow: 0 4px 32px rgba(124, 58, 237, 0.08);
+      --glow: 0 0 0 1px var(--border-strong), 0 4px 32px rgba(124, 58, 237, 0.14);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', Courier, monospace;
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ─── LAYOUT ─────────────────────────────────── */
+    .shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 20px 28px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    header span { color: var(--accent); font-weight: 700; }
+
+    main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 620px;
+    }
+
+    /* ─── STAGE TRANSITIONS ───────────────────────── */
+    .stage {
+      display: none;
+      opacity: 0;
+      animation: fadeIn 0.4s ease forwards;
+    }
+
+    .stage.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── STAGE 1: INPUT ─────────────────────────── */
+    .stage-1-title {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+      text-transform: uppercase;
+    }
+
+    .stage-1-title span { color: var(--accent); }
+
+    .input-wrap {
+      position: relative;
+      margin-bottom: 14px;
+    }
+
+    .email-input {
+      width: 100%;
+      padding: 18px 20px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 15px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .email-input::placeholder { color: var(--text-dim); }
+
+    .email-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+    }
+
+    .email-input.error {
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.08);
+    }
+
+    .error-msg {
+      display: none;
+      color: var(--red);
+      font-size: 12px;
+      margin-bottom: 12px;
+      letter-spacing: 0.04em;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 16px 24px;
+      background: var(--accent);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-dark);
+      box-shadow: 0 4px 20px rgba(124, 58, 237, 0.3);
+    }
+
+    .btn-primary:active { transform: translateY(1px); }
+
+    .internal-note {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      margin-top: 18px;
+    }
+
+    /* ─── TERMINAL BLOCK ─────────────────────────── */
+    .terminal-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .terminal-card.violet-glow {
+      border-color: var(--border-strong);
+      box-shadow: var(--glow);
+    }
+
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .terminal-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+    .dot-red   { background: #f87171; }
+    .dot-amber { background: #fbbf24; }
+    .dot-green { background: #34d399; }
+
+    .terminal-title {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-left: 6px;
+    }
+
+    .terminal-log {
+      min-height: 80px;
+    }
+
+    .t-line {
+      font-size: 13px;
+      line-height: 2;
+      color: var(--green);
+      letter-spacing: 0.04em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      animation: lineIn 0.25s ease forwards;
+    }
+
+    @keyframes lineIn {
+      from { opacity: 0; transform: translateX(-6px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    .t-line::before {
+      content: '›';
+      color: var(--accent);
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .t-line.dim { color: var(--text-muted); }
+
+    .cursor-blink {
+      display: inline-block;
+      width: 8px; height: 14px;
+      background: var(--accent);
+      vertical-align: middle;
+      margin-left: 4px;
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* ─── STAGE 3: DISQUALIFIED ─────────────────── */
+    .disq-card {
+      background: var(--red-bg);
+      border: 1.5px solid var(--red-border);
+      border-radius: 8px;
+      padding: 28px;
+    }
+
+    .disq-heading {
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      color: var(--red);
+      margin-bottom: 12px;
+      font-weight: 700;
+    }
+
+    .disq-reason {
+      font-size: 12px;
+      color: #b91c1c;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      margin-bottom: 24px;
+    }
+
+    /* ─── QUALIFIED FLASH ────────────────────────── */
+    .qualified-flash {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .qualified-flash.show { display: block; animation: fadeIn 0.3s ease forwards; }
+
+    .flash-text {
+      font-size: 13px;
+      color: var(--green);
+      letter-spacing: 0.06em;
+    }
+
+    /* ─── STAGE 5: EMAIL CARD ────────────────────── */
+    .email-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border-strong);
+      border-radius: 8px;
+      box-shadow: var(--glow);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .email-card-header {
+      padding: 14px 20px;
+      background: var(--accent-light);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .email-field {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 14px;
+    }
+
+    .email-field:last-child { border-bottom: none; }
+
+    .field-label {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      min-width: 58px;
+      padding-top: 2px;
+      flex-shrink: 0;
+    }
+
+    .field-value {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .field-body {
+      padding: 18px 20px;
+    }
+
+    .field-body .field-value {
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+
+    /* ─── BUTTONS ────────────────────────────────── */
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .btn-solid {
+      flex: 1;
+      padding: 14px 20px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s;
+      text-align: center;
+    }
+
+    .btn-solid:hover {
+      background: var(--accent-dark);
+      box-shadow: 0 4px 16px rgba(124, 58, 237, 0.28);
+    }
+
+    .btn-outline {
+      flex: 1;
+      padding: 14px 20px;
+      background: transparent;
+      color: var(--accent);
+      border: 1.5px solid var(--border-strong);
+      border-radius: 6px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .btn-outline:hover {
+      background: var(--accent-light);
+      border-color: var(--accent);
+    }
+
+    .btn-reset-disq {
+      width: 100%;
+      padding: 13px 20px;
+      background: transparent;
+      border: 1.5px solid var(--red-border);
+      color: var(--red);
+      border-radius: 6px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-reset-disq:hover { background: #fee2e2; }
+
+    /* ─── DOSSIER TOGGLE ─────────────────────────── */
+    .dossier-toggle {
+      background: none;
+      border: none;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    .dossier-toggle:hover { color: var(--accent-dark); }
+
+    .dossier-panel {
+      display: none;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      padding: 20px 22px;
+      max-height: 420px;
+      overflow-y: auto;
+      animation: fadeIn 0.3s ease forwards;
+    }
+
+    .dossier-panel.open { display: block; }
+
+    .dossier-panel pre {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: pre-wrap;
+      line-height: 1.8;
+    }
+
+    /* ─── SCROLLBAR ──────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface-alt); }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+    /* ─── MOBILE ─────────────────────────────────── */
+    @media (max-width: 520px) {
+      main { padding: 24px 14px; }
+      .terminal-card, .disq-card, .email-card { padding: 20px 16px; }
+      .terminal-card { padding: 20px; }
+      .email-field { flex-direction: column; gap: 4px; }
+      .btn-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+  <header>
+    <span>//</span> Tanim Research Engine &nbsp;&nbsp; <span style="color:var(--text-dim)">tanim.tech</span>
+  </header>
+
+  <main>
+    <div class="container">
+
+      <!-- ══ STAGE 1: INPUT ══════════════════════ -->
+      <div class="stage active" id="stage-1">
+        <p class="stage-1-title">// <span>Research</span> Pipeline &nbsp;v1.0</p>
+        <div class="input-wrap">
+          <input
+            type="email"
+            id="email-input"
+            class="email-input"
+            placeholder="// Paste prospect email address..."
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <p class="error-msg" id="email-error">// ERROR: Invalid email address.</p>
+        <button class="btn-primary" id="run-btn" onclick="startPipeline()">// Run Research Engine</button>
+        <p class="internal-note">// Internal use only.</p>
+      </div>
+
+      <!-- ══ STAGE 2: RESEARCH RUNNING ══════════ -->
+      <div class="stage" id="stage-2">
+        <div class="terminal-card violet-glow">
+          <div class="terminal-header">
+            <div class="terminal-dot dot-red"></div>
+            <div class="terminal-dot dot-amber"></div>
+            <div class="terminal-dot dot-green"></div>
+            <span class="terminal-title">research-engine.sh</span>
+          </div>
+          <div class="terminal-log" id="research-log"></div>
+        </div>
+      </div>
+
+      <!-- ══ STAGE 3A: DISQUALIFIED ══════════════ -->
+      <div class="stage" id="stage-disq">
+        <div class="disq-card">
+          <p class="disq-heading">// PROSPECT DISQUALIFIED</p>
+          <p class="disq-reason" id="disq-reason"></p>
+          <button class="btn-reset-disq" onclick="resetToStage1()">// Run New Prospect</button>
+        </div>
+      </div>
+
+      <!-- ══ STAGE 3B: QUALIFIED FLASH ══════════ -->
+      <div class="stage" id="stage-flash">
+        <div class="terminal-card" style="text-align:center; padding: 40px 28px;">
+          <p class="flash-text">// QUALIFIED. Generating email...</p>
+        </div>
+      </div>
+
+      <!-- ══ STAGE 4: EMAIL GENERATION ══════════ -->
+      <div class="stage" id="stage-4">
+        <div class="terminal-card violet-glow">
+          <div class="terminal-header">
+            <div class="terminal-dot dot-red"></div>
+            <div class="terminal-dot dot-amber"></div>
+            <div class="terminal-dot dot-green"></div>
+            <span class="terminal-title">email-writer.sh</span>
+          </div>
+          <div class="terminal-log" id="email-gen-log"></div>
+        </div>
+      </div>
+
+      <!-- ══ STAGE 5: EMAIL READY ════════════════ -->
+      <div class="stage" id="stage-5">
+        <div class="email-card">
+          <div class="email-card-header">// EMAIL READY</div>
+          <div class="email-field">
+            <span class="field-label">TO</span>
+            <span class="field-value" id="out-to"></span>
+          </div>
+          <div class="email-field">
+            <span class="field-label">SUBJECT</span>
+            <span class="field-value" id="out-subject"></span>
+          </div>
+          <div class="field-body">
+            <div class="field-value" id="out-body"></div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-solid" id="mailto-btn" onclick="openMailApp()">// Open in Mail App</button>
+          <button class="btn-outline" onclick="resetToStage1()">// Run New Prospect</button>
+        </div>
+
+        <button class="dossier-toggle" id="dossier-toggle-btn" onclick="toggleDossier()">// View Research Dossier</button>
+        <div class="dossier-panel" id="dossier-panel">
+          <pre id="dossier-text"></pre>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  /* ── State ─────────────────────────────────── */
+  let currentEmail  = '';
+  let dossierText   = '';
+  let emailSubject  = '';
+  let emailBody     = '';
+  let dossierOpen   = false;
+
+  /* ── Helpers ───────────────────────────────── */
+  function showStage(id) {
+    document.querySelectorAll('.stage').forEach(s => {
+      s.classList.remove('active');
+      s.style.display = 'none';
+    });
+    const el = document.getElementById(id);
+    el.style.display = 'block';
+    // Trigger reflow so animation replays
+    void el.offsetWidth;
+    el.classList.add('active');
+  }
+
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  }
+
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  async function appendLine(containerId, text, extraClass) {
+    const container = document.getElementById(containerId);
+    const div = document.createElement('div');
+    div.className = 't-line' + (extraClass ? ' ' + extraClass : '');
+    div.textContent = text;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  async function runAnimation(containerId, lines, intervalMs) {
+    document.getElementById(containerId).innerHTML = '';
+    for (const line of lines) {
+      await sleep(intervalMs);
+      await appendLine(containerId, line);
+    }
+  }
+
+  /* ── Prompts ───────────────────────────────── */
+  function buildGeminiPrompt(email) {
+    return `ROLE: You are a research analyst working for Tanim, a 22-year-old content production specialist and operations expert who works directly with business owners as a dedicated individual contributor, not an agency. He handles video editing, podcast editing, short-form content, thumbnails, social media management, content distribution, cold outreach infrastructure, web design, and AI workflow automation personally. Your job is to validate prospects and build intelligence dossiers used to write personalized outreach emails from Tanim directly to business owners.
+
+CRITICAL CONTEXT: Tanim works with BUSINESS OWNERS who use content as a sales channel to sell courses, coaching, consulting, or services worth $2,000 or more. Not YouTubers who make money from AdSense and sponsors.
+
+The difference: YouTuber = Makes money FROM content = DISQUALIFY. Business Owner = Makes money THROUGH content to drive sales to offers = QUALIFY.
+
+YOUR INPUT: Gmail address: ${email}. Your job is to find their YouTube channel from this email then research them deeply. Many creators list their Gmail in their YouTube About section. Search for this email across the web, find their YouTube channel, go deep on their content and business. Be thorough.
+
+PHASE 1: INSTANT DISQUALIFICATION CHECK. Before any research check for these automatic disqualifiers: Gaming, Vlogging, Reaction or Prank content. Crypto, NFT or Trading guru. Kids, Family or Lifestyle-only. Music artists. Political or Religious content. ASMR or Relaxation. No sellable offer visible. Only income appears to be AdSense or Sponsors. Fitness influencer without $2k+ coaching offer. If any disqualifier applies, start your entire response with exactly the word DISQUALIFIED followed by a colon and the reason, then stop completely.
+
+PHASE 2: SHARK QUALIFICATION. Score the prospect one point each: High-ticket offer visible $2k+ courses coaching or consulting. Team evidence. Speaking or consulting background. Active content posted in last 30 days. Clear pain point visible in content. B2B focus serving businesses not consumers. Website with services page not just Linktree. Score 5-7 = SHARK. Score 3-4 = PROSPECT. Score 0-2 = start response with DISQUALIFIED and reason then stop.
+
+PHASE 3: DEEP DIVE RESEARCH. Document: exact business model and how they make money, any price points found, team size, recent milestones launches or funding, podcast appearances, speaking history. Flag if email appears to be info@ contact@ support@ team@ or assistant-managed.
+
+PHASE 4: PROOF OF LIFE EXTRACTION. Find 3-4 highly specific details from their two most recent videos that prove genuine research. Details so specific the prospect would think: this person actually watched my content. Include video titles and timestamps where possible.
+
+PHASE 5: CONTENT QUALITY ASSESSMENT. Analyze both videos for visual quality, audio quality, content structure and pacing, distribution and repurposing. Identify the single PRIMARY OPPORTUNITY where Tanim could make the biggest difference for this specific person.
+
+PHASE 6: ADD-ON SELECTION. Choose exactly ONE: Cold Outreach if they have a clear B2B service and need more clients in their pipeline. Web Design if they have no proper website or only a Linktree. AI/RevOps if they mention being overwhelmed, inconsistent posting, or too much manual work.
+
+OUTPUT: Build the complete dossier in this exact format with these exact labels on separate lines:
+RESEARCH DOSSIER: [Name]
+EMAIL: [email]
+EMAIL QUALITY: [Decision-maker or Generic or Flagged]
+YOUTUBE: [channel link if found]
+VIDEOS ANALYZED: [Video 1 title] and [Video 2 title]
+WEBSITE: [if found, otherwise none found]
+BUSINESS MODEL: [how they make money]
+PRICE POINTS: [if found, otherwise not found publicly]
+TEAM EVIDENCE: [what you found]
+SHARK SCORE: [X/7]
+VERDICT: [SHARK or PROSPECT]
+PROOF OF LIFE: [3-4 specific details with sources]
+CONTENT QUALITY: [visual notes, audio notes, structure notes, distribution notes]
+PRIMARY OPPORTUNITY: [the one area where Tanim could help most]
+RECOMMENDED ADD-ON: [Cold Outreach or Web Design or AI-RevOps]
+EMAIL ANGLE: [2-3 sentences on the best way for Tanim to approach this person as an individual]`;
+  }
+
+  const CLAUDE_SYSTEM = `ROLE: You are writing cold outreach emails for Tanim, a 22-year-old content production and operations specialist who works directly with business owners as an individual, not through an agency. He is reaching out personally to offer his skills directly.
+
+WHO TANIM IS: He handles everything himself: video editing, podcast editing, short-form clips and reels, thumbnails, social media management, content distribution. He also does cold outreach infrastructure, web design, and AI workflow automation depending on what the person needs. He positions himself as someone who becomes a dedicated part of their operation, not a freelancer who disappears after a project.
+
+YOUR VOICE: The Friendly Expert who genuinely watched their content. Warm and real. Knowledgeable but not showing off. Helpful not salesy. Sounds like a talented person reaching out personally, not a company sending a blast.
+
+SUBJECT LINE RULES: One perfect subject line only. 3-7 words. Personalized to this specific person. Creates curiosity. All lowercase. No spam triggers. Never use: Quick question, Opportunity for Name, Partnership proposal, I love your content, Can I help you, Video editing services, or anything over 7 words.
+
+EMAIL STRUCTURE:
+Section 1 opener 2-3 sentences: Use one specific Proof of Life detail from the dossier. Show you actually watched their content. Genuine and specific, not flattery.
+Section 2 who Tanim is plus core service 2-3 sentences: Quick intro as Tanim, someone who handles content production end to end personally. Frame it as taking the entire production workload off their plate so they can focus on what only they can do.
+Section 3 the add-on 1-2 sentences: Transition naturally with Also or On a separate note. Mention the one recommended add-on from the dossier as a casual observation, not a pitch. Keep it light like a helpful aside between two people who get it.
+Section 4 the close 1-2 sentences: Soft and low pressure. Something like would love to chat if any of this sounds useful. Sign off with just Tanim.
+
+HARD CONSTRAINTS:
+Email must be 120-180 words total.
+Never use em dashes anywhere in the email.
+Never use: I hope this email finds you well, Dear Mr or Ms, I came across your content, Take it to the next level, Leverage, Synergy, Optimize, Would you be available for a call, Best regards, Kind regards, Sincerely, any language that sounds critical of their work, any corporate or agency language.
+Sound like one person writing to another person they respect.
+
+OUTPUT FORMAT: First line exactly: SUBJECT: [subject line]. Then one blank line. Then the full email body. Nothing else.`;
+
+  /* ── API Calls ──────────────────────────────── */
+  async function callGemini(email) {
+    const resp = await fetch('https://tanim-ai-agent.nasrullahtanim.workers.dev/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: buildGeminiPrompt(email) })
+    });
+    if (!resp.ok) throw new Error('Gemini API error: ' + resp.status);
+    const data = await resp.json();
+    return data.response || data.text || data.content || data.result ||
+           (typeof data === 'string' ? data : JSON.stringify(data));
+  }
+
+  async function callClaude(dossier) {
+    const resp = await fetch('https://tanim-ai-agent.nasrullahtanim.workers.dev/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: CLAUDE_SYSTEM,
+        messages: [{
+          role: 'user',
+          content: 'Here is the research dossier. Write the cold email now:\n\n' + dossier
+        }]
+      })
+    });
+    if (!resp.ok) throw new Error('Claude API error: ' + resp.status);
+    const data = await resp.json();
+    return (data.content && data.content[0] && data.content[0].text) ||
+           data.response || data.text || data.result ||
+           (typeof data === 'string' ? data : JSON.stringify(data));
+  }
+
+  /* ── Pipeline ───────────────────────────────── */
+  async function startPipeline() {
+    const emailInput = document.getElementById('email-input');
+    const errorEl    = document.getElementById('email-error');
+
+    emailInput.classList.remove('error');
+    errorEl.style.display = 'none';
+
+    const email = emailInput.value.trim();
+
+    if (!isValidEmail(email)) {
+      emailInput.classList.add('error');
+      errorEl.style.display  = 'block';
+      return;
+    }
+
+    currentEmail = email;
+
+    // Stage 2
+    showStage('stage-2');
+
+    const researchLines = [
+      '// Initializing research engine...',
+      `// Email received: ${email}`,
+      '// Scanning for digital footprint...',
+      '// Locating YouTube channel...',
+      '// Analyzing content library...',
+      '// Extracting business intelligence...',
+      '// Running Shark qualification score...',
+      '// Identifying proof of life details...',
+      '// Assessing content quality...',
+      '// Building dossier...',
+      '// Research complete.'
+    ];
+
+    let geminiResult = null;
+    let geminiError  = null;
+
+    // Run animation and API in parallel
+    await Promise.all([
+      runAnimation('research-log', researchLines, 600),
+      callGemini(email).then(r => { geminiResult = r; }).catch(e => { geminiError = e; })
+    ]);
+
+    if (geminiError) {
+      showDisqualified('// ERROR: Research engine failed. ' + geminiError.message);
+      return;
+    }
+
+    dossierText = geminiResult;
+
+    const trimmed = geminiResult.trim();
+    if (/^DISQUALIFIED/i.test(trimmed)) {
+      showDisqualified(trimmed);
+    } else {
+      await showQualifiedAndProceed();
+    }
+  }
+
+  function showDisqualified(text) {
+    const reason = text.replace(/^DISQUALIFIED[:\s]*/i, '').trim();
+    document.getElementById('disq-reason').textContent = reason || text;
+    showStage('stage-disq');
+  }
+
+  async function showQualifiedAndProceed() {
+    showStage('stage-flash');
+    await sleep(1500);
+    await runEmailGeneration();
+  }
+
+  async function runEmailGeneration() {
+    showStage('stage-4');
+
+    const emailGenLines = [
+      '// Passing dossier to Claude...',
+      '// Analyzing proof of life details...',
+      '// Selecting personalization angle...',
+      '// Crafting subject line...',
+      '// Writing email body...',
+      '// Applying voice guidelines...',
+      '// Running quality check...',
+      '// Email ready.'
+    ];
+
+    let claudeResult = null;
+    let claudeError  = null;
+
+    await Promise.all([
+      runAnimation('email-gen-log', emailGenLines, 500),
+      callClaude(dossierText).then(r => { claudeResult = r; }).catch(e => { claudeError = e; })
+    ]);
+
+    if (claudeError) {
+      showDisqualified('// ERROR: Email generation failed. ' + claudeError.message);
+      return;
+    }
+
+    parseAndShowEmail(claudeResult);
+  }
+
+  function parseAndShowEmail(raw) {
+    const lines = raw.trim().split('\n');
+    let subjectLine = '';
+    let bodyStart   = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (/^SUBJECT:\s*/i.test(lines[i])) {
+        subjectLine = lines[i].replace(/^SUBJECT:\s*/i, '').trim();
+        // Body starts after the next blank line
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim() === '') {
+            bodyStart = j + 1;
+            break;
+          }
+        }
+        break;
+      }
+    }
+
+    const body = lines.slice(bodyStart).join('\n').trim();
+
+    emailSubject = subjectLine;
+    emailBody    = body;
+
+    document.getElementById('out-to').textContent      = currentEmail;
+    document.getElementById('out-subject').textContent = subjectLine;
+    document.getElementById('out-body').textContent    = body;
+    document.getElementById('dossier-text').textContent = dossierText;
+
+    showStage('stage-5');
+  }
+
+  /* ── Mail App ───────────────────────────────── */
+  function openMailApp() {
+    const mailto =
+      'mailto:' + encodeURIComponent(currentEmail) +
+      '?subject=' + encodeURIComponent(emailSubject) +
+      '&body=' + encodeURIComponent(emailBody);
+    window.location.href = mailto;
+  }
+
+  /* ── Dossier Toggle ─────────────────────────── */
+  function toggleDossier() {
+    dossierOpen = !dossierOpen;
+    const panel  = document.getElementById('dossier-panel');
+    const toggle = document.getElementById('dossier-toggle-btn');
+    if (dossierOpen) {
+      panel.classList.add('open');
+      toggle.textContent = '// Hide Research Dossier';
+    } else {
+      panel.classList.remove('open');
+      toggle.textContent = '// View Research Dossier';
+    }
+  }
+
+  /* ── Reset ──────────────────────────────────── */
+  function resetToStage1() {
+    currentEmail  = '';
+    dossierText   = '';
+    emailSubject  = '';
+    emailBody     = '';
+    dossierOpen   = false;
+
+    document.getElementById('email-input').value       = '';
+    document.getElementById('email-input').classList.remove('error');
+    document.getElementById('email-error').style.display = 'none';
+    document.getElementById('dossier-panel').classList.remove('open');
+    document.getElementById('dossier-toggle-btn').textContent = '// View Research Dossier';
+
+    showStage('stage-1');
+  }
+
+  /* ── Enter key support ──────────────────────── */
+  document.getElementById('email-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') startPipeline();
+  });
+</script>
+
+</body>
+</html>
