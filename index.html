@@ -713,7 +713,7 @@
         </div>
 
         <div class="btn-copy-row">
-          <button class="btn-copy" id="copy-btn" onclick="copyEmailToClipboard()">// Copy Email (with hyperlink)</button>
+          <button class="btn-copy" id="copy-btn" onclick="copyEmailToClipboard()">// Copy Email</button>
         </div>
 
         <button class="dossier-toggle" id="dossier-toggle-btn" onclick="toggleDossier()">// View Research Dossier</button>
@@ -1221,36 +1221,48 @@ Nothing else. No commentary, no notes, no quality check output.`;
     window.location.href = mailto;
   }
 
-  /* ── Copy to Clipboard (HTML + plain text) ──── */
+  /* ── Copy to Clipboard ───────────────────────── */
   async function copyEmailToClipboard() {
     const btn = document.getElementById('copy-btn');
 
-    // HTML version: subject line + blank line + body with "video" hyperlinked
-    const subjectHtml = escapeHtml(emailSubject);
-    const bodyHtml    = buildBodyHtml(emailBody);
-    const fullHtml    = `<p style="margin:0 0 16px"><b>Subject:</b> ${subjectHtml}</p>${bodyHtml}`;
+    const fullPlain = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${emailBody}`;
+    let copied = false;
 
-    // Plain text fallback
-    const fullPlain = `Subject: ${emailSubject}\n\n${emailBody}`;
-
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'text/html':  new Blob([fullHtml],  { type: 'text/html' }),
-          'text/plain': new Blob([fullPlain], { type: 'text/plain' })
-        })
-      ]);
-    } catch (_) {
-      // Fallback for browsers that don't support ClipboardItem
-      try { await navigator.clipboard.writeText(fullPlain); } catch (_2) { /* silent */ }
+    // 1. Modern Clipboard API (writeText — widest support)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(fullPlain);
+        copied = true;
+      } catch (_) {}
     }
 
-    btn.textContent = '// Copied!';
-    btn.classList.add('copied');
-    setTimeout(() => {
-      btn.textContent = '// Copy Email (with hyperlink)';
-      btn.classList.remove('copied');
-    }, 2000);
+    // 2. Legacy fallback: hidden textarea + execCommand
+    if (!copied) {
+      const ta = document.createElement('textarea');
+      ta.value = fullPlain;
+      ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;pointer-events:none;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try { copied = document.execCommand('copy'); } catch (_) {}
+      document.body.removeChild(ta);
+    }
+
+    if (copied) {
+      btn.textContent = '// Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = '// Copy Email';
+        btn.classList.remove('copied');
+      }, 2000);
+    } else {
+      btn.textContent = '// Copy failed — select & copy manually';
+      btn.style.color = 'var(--red)';
+      setTimeout(() => {
+        btn.textContent = '// Copy Email';
+        btn.style.color = '';
+      }, 3000);
+    }
   }
 
   /* ── Dossier Toggle ─────────────────────────── */
