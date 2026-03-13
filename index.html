@@ -1225,18 +1225,35 @@ Nothing else. No commentary, no notes, no quality check output.`;
   async function copyEmailToClipboard() {
     const btn = document.getElementById('copy-btn');
 
-    const fullPlain = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${emailBody}`;
+    const subjectHtml = escapeHtml(emailSubject);
+    const bodyHtml    = buildBodyHtml(emailBody);
+    const fullHtml    = `<p style="margin:0 0 6px"><b>To:</b> ${escapeHtml(currentEmail)}</p><p style="margin:0 0 16px"><b>Subject:</b> ${subjectHtml}</p>${bodyHtml}`;
+    const fullPlain   = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${emailBody}`;
+
     let copied = false;
 
-    // 1. Modern Clipboard API (writeText — widest support)
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    // 1. Rich HTML copy — preserves the hyperlink
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html':  new Blob([fullHtml],  { type: 'text/html' }),
+            'text/plain': new Blob([fullPlain], { type: 'text/plain' })
+          })
+        ]);
+        copied = true;
+      } catch (_) {}
+    }
+
+    // 2. Plain text fallback (loses hyperlink but still copies content)
+    if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
       try {
         await navigator.clipboard.writeText(fullPlain);
         copied = true;
       } catch (_) {}
     }
 
-    // 2. Legacy fallback: hidden textarea + execCommand
+    // 3. Legacy execCommand fallback
     if (!copied) {
       const ta = document.createElement('textarea');
       ta.value = fullPlain;
