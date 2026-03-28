@@ -693,15 +693,32 @@
       <!-- ══ STAGE 5: EMAIL READY ════════════════ -->
       <div class="stage" id="stage-5">
         <div class="email-card">
-          <div class="email-card-header">// EMAIL READY TO SEND</div>
+          <div class="email-card-header">// EMAIL READY</div>
+          <div class="email-field">
+            <span class="field-label">TO</span>
+            <span class="field-value" id="out-to"></span>
+          </div>
+          <div class="email-field">
+            <span class="field-label">SUBJECT</span>
+            <span class="field-value" id="out-subject"></span>
+          </div>
           <div class="field-body">
-            <div class="field-value" id="out-email-plain"></div>
+            <div class="field-value" id="out-body"></div>
           </div>
         </div>
 
         <div class="btn-row">
-          <button class="btn-solid" onclick="copyEmailToClipboard()">// Copy Email</button>
+          <button class="btn-solid" id="mailto-btn" onclick="openMailApp()">// Open in Mail App</button>
           <button class="btn-outline" onclick="resetToStage1()">// Run New Prospect</button>
+        </div>
+
+        <div class="btn-copy-row">
+          <button class="btn-copy" id="copy-btn" onclick="copyEmailToClipboard()">// Copy Email</button>
+        </div>
+
+        <button class="dossier-toggle" id="dossier-toggle-btn" onclick="toggleDossier()">// View Research Dossier</button>
+        <div class="dossier-panel" id="dossier-panel">
+          <pre id="dossier-text"></pre>
         </div>
       </div>
 
@@ -1553,11 +1570,10 @@ SELECT RANDOMLY. NEVER COPY-PASTE. ADAPT THE CHOSEN TEMPLATE TO THE PROSPECT.`;
     emailSubject = subjectLine;
     emailBody    = buildBodyPlain(body); // plain text goes into mailto
 
-    // Format plain email for display
-    const plainEmail = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${withVideoUrl(emailBody)}`;
-    document.getElementById('out-email-plain').textContent = plainEmail;
-    document.getElementById('out-email-plain').style.whiteSpace = 'pre-wrap';
-    document.getElementById('out-email-plain').style.wordWrap = 'break-word';
+    document.getElementById('out-to').textContent       = currentEmail;
+    document.getElementById('out-subject').textContent  = subjectLine;
+    document.getElementById('out-body').innerHTML       = buildBodyHtml(body); // HTML for preview
+    document.getElementById('dossier-text').textContent = dossierText;
 
     showStage('stage-5');
   }
@@ -1583,23 +1599,59 @@ SELECT RANDOMLY. NEVER COPY-PASTE. ADAPT THE CHOSEN TEMPLATE TO THE PROSPECT.`;
 
   /* ── Copy to Clipboard ───────────────────────── */
   async function copyEmailToClipboard() {
-    const btn = document.querySelector('.btn-solid');
-    const plainEmailText = document.getElementById('out-email-plain').textContent;
+    const btn = document.getElementById('copy-btn');
+
+    const subjectHtml = escapeHtml(emailSubject);
+    const bodyHtml    = buildBodyHtml(emailBody);
+    const fullHtml    = `<p style="margin:0 0 6px;font-family:sans-serif;font-size:14px"><b>To:</b> ${escapeHtml(currentEmail)}</p><p style="margin:0 0 16px;font-family:sans-serif;font-size:14px"><b>Subject:</b> ${subjectHtml}</p><div style="font-family:sans-serif;font-size:14px;line-height:1.7">${bodyHtml}</div>`;
+    // Plain-text version always carries the raw URL so every paste target can see it
+    const fullPlain   = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${withVideoUrl(emailBody)}`;
 
     let copied = false;
 
-    // 1. ClipboardItem — plain text
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    // 1. ClipboardItem — HTML+plain, works on desktop & iOS 13.4+ / Android Chrome 66+
+    if (navigator.clipboard && window.ClipboardItem) {
       try {
-        await navigator.clipboard.writeText(plainEmailText);
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html':  new Blob([fullHtml],  { type: 'text/html' }),
+            'text/plain': new Blob([fullPlain], { type: 'text/plain' })
+          })
+        ]);
         copied = true;
       } catch (_) {}
     }
 
-    // 2. textarea fallback
+    // 2. contenteditable + execCommand — copies rich HTML on iOS Safari & older Android
+    if (!copied) {
+      const div = document.createElement('div');
+      div.contentEditable = 'true';
+      div.innerHTML = fullHtml;
+      // Must be in the viewport (not -9999px) for iOS to allow selection
+      div.style.cssText = 'position:fixed;top:0;left:0;width:100vw;opacity:0.001;pointer-events:none;overflow:hidden;z-index:-1;';
+      document.body.appendChild(div);
+      div.focus();
+      const range = document.createRange();
+      range.selectNodeContents(div);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+        try { copied = document.execCommand('copy'); } catch (_) {}
+        sel.removeAllRanges();
+      }
+      document.body.removeChild(div);
+    }
+
+    // 3. writeText — reliable plain-text fallback with URL embedded (iOS Safari 13+, Android Chrome)
+    if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(fullPlain); copied = true; } catch (_) {}
+    }
+
+    // 4. textarea + execCommand — last resort for very old browsers
     if (!copied) {
       const ta = document.createElement('textarea');
-      ta.value = plainEmailText;
+      ta.value = fullPlain;
       ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
       document.body.appendChild(ta);
       ta.focus();
@@ -1608,13 +1660,20 @@ SELECT RANDOMLY. NEVER COPY-PASTE. ADAPT THE CHOSEN TEMPLATE TO THE PROSPECT.`;
       document.body.removeChild(ta);
     }
 
-    if (copied && btn) {
+    if (copied) {
       btn.textContent = '// Copied!';
-      btn.style.background = 'var(--green)';
+      btn.classList.add('copied');
       setTimeout(() => {
         btn.textContent = '// Copy Email';
-        btn.style.background = '';
+        btn.classList.remove('copied');
       }, 2000);
+    } else {
+      btn.textContent = '// Copy failed — select & copy manually';
+      btn.style.color = 'var(--red)';
+      setTimeout(() => {
+        btn.textContent = '// Copy Email';
+        btn.style.color = '';
+      }, 3000);
     }
   }
 
