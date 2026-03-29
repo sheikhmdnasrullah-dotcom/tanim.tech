@@ -1221,16 +1221,22 @@ SUBJECT: [subject line only]
   async function copyEmailToClipboard() {
     const btn = document.getElementById('copy-btn');
 
-    // Plain-text only version (no HTML styling)
+    // HTML version with hyperlinked "video"
+    const subjectHtml = escapeHtml(emailSubject);
+    const bodyHtml    = buildBodyHtml(emailBody);
+    const fullHtml    = `To: ${escapeHtml(currentEmail)}\nSubject: ${subjectHtml}\n\n${bodyHtml}`;
+
+    // Plain-text version with URL for auto-hyperlinking
     const fullPlain = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${withVideoUrl(emailBody)}`;
 
     let copied = false;
 
-    // 1. ClipboardItem — plain text only, clean and simple
+    // 1. ClipboardItem — HTML+plain, works on desktop & iOS 13.4+ / Android Chrome 66+
     if (navigator.clipboard && window.ClipboardItem) {
       try {
         await navigator.clipboard.write([
           new ClipboardItem({
+            'text/html':  new Blob([fullHtml],  { type: 'text/html' }),
             'text/plain': new Blob([fullPlain], { type: 'text/plain' })
           })
         ]);
