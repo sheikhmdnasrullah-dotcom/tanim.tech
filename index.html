@@ -1163,6 +1163,41 @@ SUBJECT: [subject line only]
     return text.replace(/the video I recorded/gi, `the video I recorded: ${VIDEO_URL}`);
   }
 
+  function legacyRichCopy(html, plain) {
+    const container = document.createElement('div');
+    container.contentEditable = 'true';
+    container.setAttribute('aria-hidden', 'true');
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;white-space:normal;';
+    container.innerHTML = html;
+    document.body.appendChild(container);
+
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(container);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    let copied = false;
+    const onCopy = (event) => {
+      event.preventDefault();
+      event.clipboardData.setData('text/html', html);
+      event.clipboardData.setData('text/plain', plain);
+      copied = true;
+    };
+
+    document.addEventListener('copy', onCopy, { once: true });
+
+    try {
+      copied = document.execCommand('copy') || copied;
+    } catch (_) {
+      copied = false;
+    }
+
+    selection.removeAllRanges();
+    document.body.removeChild(container);
+    return copied;
+  }
+
   function parseAndShowEmail(raw) {
     const lines = raw.trim().split('\n');
     let subjectLine = '';
@@ -1232,8 +1267,12 @@ ${bodyHtml}
 
     let copied = false;
 
-    // 1. ClipboardItem — HTML+plain, works on desktop & iOS 13.4+ / Android Chrome 66+
-    if (navigator.clipboard && window.ClipboardItem) {
+    // 1. Copy event + selected rich HTML. This tends to preserve hyperlinks
+    // better in email clients than async clipboard APIs.
+    copied = legacyRichCopy(fullHtml, fullPlain);
+
+    // 2. ClipboardItem — HTML+plain fallback
+    if (!copied && navigator.clipboard && window.ClipboardItem) {
       try {
         await navigator.clipboard.write([
           new ClipboardItem({
@@ -1245,12 +1284,12 @@ ${bodyHtml}
       } catch (_) {}
     }
 
-    // 2. writeText — reliable plain-text fallback
+    // 3. writeText — reliable plain-text fallback
     if (!copied && navigator.clipboard && navigator.clipboard.writeText) {
       try { await navigator.clipboard.writeText(fullPlain); copied = true; } catch (_) {}
     }
 
-    // 3. textarea + execCommand — last resort for very old browsers
+    // 4. textarea + execCommand — last resort for very old browsers
     if (!copied) {
       const ta = document.createElement('textarea');
       ta.value = fullPlain;
