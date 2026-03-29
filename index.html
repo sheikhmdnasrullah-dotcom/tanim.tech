@@ -938,52 +938,39 @@ Why: [1-2 sentence reasoning for why cold outreach specifically would help this 
 EMAIL ANGLE: [2-3 sentences on how to approach this person. What feels like a natural conversation starter?]`;
   }
 
-  const CLAUDE_SYSTEM = `ROLE: You are Tanim, an independent video editor and outreach specialist. Write SHORT, CONVERSATIONAL emails. Like chatting with someone. Warm, genuine, natural.
+  const CLAUDE_SYSTEM = `ROLE: You are Tanim. Write SHORT, CONVERSATIONAL outreach emails based on the dossier. Warm, genuine, natural.
 
-TWO SERVICES:
-1. VIDEO PRODUCTION - Editing, thumbnails, shorts, distribution
-2. COLD OUTREACH - Pipeline building via email
+VOICE: Real person. Natural conversation. Helpful tone. Use "I" not "we". No corporate speak. No generic sales pitch.
 
-VOICE: Real person. Natural conversation. Helpful tone. Use "I" not "we". No corporate speak or salesy language.
+CORE RULE:
+The email must NOT explain what you do for creators in general.
+It must explain what you can do for THIS specific person based on the dossier.
+Every value statement must feel tailored to their workflow, content style, audience, bottleneck, or business model.
 
 EMAIL RULES:
 ✅ 100-140 words MAXIMUM (including closing)
 ✅ 3 short paragraphs only
-✅ Short sentences - max 12 words each
+✅ Short sentences
 ✅ Plain text ONLY - no bold, no markdown, no formatting
 ✅ Conversational and genuine
 ✅ Scannable in 20 seconds
-✅ NO QUESTIONS to the recipient - just statements and observations
+✅ NO QUESTIONS to the recipient
+✅ Paragraph 2 must be personalized, concrete, and specific to the recipient
+
+USE THE DOSSIER:
+- Use the "PRIMARY OPPORTUNITY" as the core service angle
+- Use the "EMAIL ANGLE" to shape the tone and entry point
+- Mention one or two concrete outcomes you can help with for this person
+- If cold outreach is the best fit, say how it can help their specific business
+- If production is the best fit, say what part of their workflow you can take over or improve
+- Keep it tailored to them, not a service menu
 
 STRUCTURE:
-PARA 1: One specific detail from their content. Show you watched.
+PARA 1: One specific detail from their content. Show you actually watched.
 
-PARA 2: PITCH (pick ONE variation that fits naturally):
-
-VARIATION 1:
-I'm Tanim, and I handle video production end to end. Everything from editing your long-form content to creating shorts, designing thumbnails, and handling distribution. Basically taking the entire production side off your plate so you can focus on creating.
-
-I also run cold email campaigns to help fill pipelines with qualified leads. That's something I do as well.
-
-VARIATION 2:
-I do video production work—editing, shorts, thumbnails, distribution. Basically the entire workflow so you don't have to juggle it all. Let me handle the production work, you focus on what you do best.
-
-I also help creators run cold email campaigns to build their client pipeline. That tends to work really well.
-
-VARIATION 3:
-I work with creators on their video production from start to finish. Editing, creating clips, designing thumbnails, managing distribution. It's basically outsourcing all the production work so you can stay focused on content.
-
-I also run cold outreach campaigns that bring in qualified leads. That's another service I offer.
-
-VARIATION 4:
-I handle the full video production side for creators—editing, shorts, thumbnails, distribution. It frees up a lot of your time and mental bandwidth to focus purely on creating.
-
-On top of that, I run cold email campaigns that generate actual leads for your service. That's something worth looking into.
-
-VARIATION 5:
-I help creators with their video production end-to-end. Everything from editing your main content to short clips, thumbnails, and distribution. Lets you stay in your lane instead of juggling production logistics.
-
-I also run cold email campaigns that actually generate leads for your service. It makes a real difference for the pipeline.
+PARA 2: Personalized value. Explain what you can do for them specifically.
+Bad: "I help creators with editing, thumbnails, shorts, and distribution."
+Good: "I could tighten your long-form edits, cut stronger shorts from those teaching moments, and make the packaging feel sharper for this audience."
 
 PARA 3: Closing (exact - NO QUESTIONS):
 If you're available, we can sit down and chat to figure out how we can make things work. For a quick recap, you can check out the video I recorded. Looking forward to chatting soon.
@@ -997,7 +984,7 @@ TONE: Conversational, genuine, observational. Not salesy. No calls-to-action or 
 OUTPUT FORMAT:
 SUBJECT: [subject line only]
 
-[email body with selected pitch variation - PLAIN TEXT ONLY]`;
+[email body - PLAIN TEXT ONLY]`;
 
   /* ── API Calls ──────────────────────────────── */
   async function callGemini(email) {
@@ -1145,20 +1132,28 @@ SUBJECT: [subject line only]
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // For the on-screen preview: safe HTML with "video" as a clickable link
-  function buildBodyHtml(plain) {
-    let html = escapeHtml(plain).replace(/\n/g, '<br>');
-
-    // Replace "the video I recorded" with hyperlinked version
-    html = html.replace(
+  function hyperlinkVideoPhrase(html) {
+    return html.replace(
       /the video I recorded/gi,
       `the <a href="${VIDEO_URL}" target="_blank" rel="noopener noreferrer" style="color:#7c3aed;text-decoration:underline;text-underline-offset:2px">video</a> I recorded`
     );
-
-    return html;
   }
 
-  // Plain text body — URL stays raw so email clients auto-hyperlink it
+  // For the on-screen preview and rich-text clipboard: preserve paragraphs and hyperlink "video"
+  function buildBodyHtml(plain) {
+    const paragraphs = plain
+      .trim()
+      .split(/\n\s*\n/)
+      .filter(Boolean)
+      .map((paragraph) => {
+        const html = escapeHtml(paragraph.trim()).replace(/\n/g, '<br>');
+        return `<p style="margin:0 0 16px;">${hyperlinkVideoPhrase(html)}</p>`;
+      });
+
+    return paragraphs.join('');
+  }
+
+  // Plain text body as returned from the model
   function buildBodyPlain(plain) {
     return plain;
   }
@@ -1224,22 +1219,16 @@ SUBJECT: [subject line only]
   async function copyEmailToClipboard() {
     const btn = document.getElementById('copy-btn');
 
-    // HTML version with hyperlinked "video" (proper HTML format)
+    // HTML version with rich-text spacing and a hyperlinked "video" word
     const bodyHtml = buildBodyHtml(emailBody);
-    const fullHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-</head>
-<body style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#333;">
-<p>To: ${escapeHtml(currentEmail)}</p>
-<p>Subject: ${escapeHtml(emailSubject)}</p>
-<div style="margin-top:16px;white-space:pre-wrap;">${bodyHtml}</div>
-</body>
-</html>`;
+    const fullHtml = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;line-height:1.7;color:#333;">
+<p style="margin:0 0 12px;"><strong>To:</strong> ${escapeHtml(currentEmail)}</p>
+<p style="margin:0 0 18px;"><strong>Subject:</strong> ${escapeHtml(emailSubject)}</p>
+${bodyHtml}
+</div>`;
 
-    // Plain-text version (clean, no extra URLs)
-    const fullPlain = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${emailBody}`;
+    // Plain-text version includes the full closing and the raw URL as a fallback
+    const fullPlain = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${withVideoUrl(emailBody)}`;
 
     let copied = false;
 
