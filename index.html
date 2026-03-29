@@ -600,11 +600,40 @@
 
     /* ─── MOBILE ─────────────────────────────────── */
     @media (max-width: 520px) {
-      main { padding: 24px 14px; }
-      .terminal-card, .disq-card, .email-card { padding: 20px 16px; }
+      header { padding: 16px 14px; }
+      main { padding: 20px 12px 28px; }
+      .container { max-width: 100%; }
+      .terminal-card, .disq-card, .email-card { padding: 18px 14px; }
       .terminal-card { padding: 20px; }
       .email-field { flex-direction: column; gap: 4px; }
       .btn-row { flex-direction: column; }
+      .btn-primary, .btn-solid, .btn-outline, .btn-copy, .btn-reset-disq {
+        min-height: 48px;
+        font-size: 13px;
+      }
+      .theme-toggle {
+        min-height: 40px;
+        min-width: 40px;
+        padding: 7px 12px;
+      }
+      .hero { margin-bottom: 32px; }
+      .hero-logo {
+        width: 60px;
+        height: 60px;
+        font-size: 32px;
+        margin-bottom: 18px;
+      }
+      .hero-title { font-size: 18px; }
+      .hero-sub, .field-value, .email-card .field-value, .field-body .field-value {
+        font-size: 13px;
+        line-height: 1.75;
+      }
+      .field-body { padding: 16px 14px; }
+      .email-card-header, .field-label, .brand-name, .terminal-title { font-size: 10px; }
+      .dossier-panel {
+        max-height: 320px;
+        padding: 16px;
+      }
     }
   </style>
 </head>
@@ -1264,7 +1293,35 @@ If any item fails, rewrite before outputting.`;
     return text.replace(/the video I recorded/gi, `the video I recorded: ${VIDEO_URL}`);
   }
 
-  function legacyRichCopy(html, plain) {
+  function escapeRtf(str) {
+    return str
+      .replace(/\\/g, '\\\\')
+      .replace(/{/g, '\\{')
+      .replace(/}/g, '\\}')
+      .replace(/\r\n|\r|\n/g, '\\line ');
+  }
+
+  function buildBodyRtf(plain) {
+    const escaped = escapeRtf(plain);
+    return escaped.replace(
+      /the video I recorded/gi,
+      `the {\\field{\\*\\fldinst{HYPERLINK "${VIDEO_URL}"}}{\\fldrslt{\\ul\\cf1 video}}} I recorded`
+    );
+  }
+
+  function buildFullRtf() {
+    return `{\\rtf1\\ansi\\deff0
+{\\fonttbl{\\f0 Arial;}}
+{\\colortbl;\\red124\\green58\\blue237;}
+\\fs28
+\\b To:\\b0 ${escapeRtf(currentEmail)}\\par
+\\b Subject:\\b0 ${escapeRtf(emailSubject)}\\par
+\\par
+${buildBodyRtf(emailBody)}
+}`;
+  }
+
+  function legacyRichCopy(html, plain, rtf) {
     const container = document.createElement('div');
     container.contentEditable = 'true';
     container.setAttribute('aria-hidden', 'true');
@@ -1275,14 +1332,17 @@ If any item fails, rewrite before outputting.`;
     const selection = window.getSelection();
     const range = document.createRange();
     range.selectNodeContents(container);
-    selection.removeAllRanges();
-    selection.addRange(range);
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
 
     let copied = false;
     const onCopy = (event) => {
       event.preventDefault();
       event.clipboardData.setData('text/html', html);
       event.clipboardData.setData('text/plain', plain);
+      try { event.clipboardData.setData('text/rtf', rtf); } catch (_) {}
       copied = true;
     };
 
@@ -1294,7 +1354,7 @@ If any item fails, rewrite before outputting.`;
       copied = false;
     }
 
-    selection.removeAllRanges();
+    if (selection) selection.removeAllRanges();
     document.body.removeChild(container);
     return copied;
   }
@@ -1365,22 +1425,27 @@ ${bodyHtml}
 
     // Plain-text version includes the full closing and the raw URL as a fallback
     const fullPlain = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${withVideoUrl(emailBody)}`;
+    const fullRtf = buildFullRtf();
 
     let copied = false;
 
     // 1. Copy event + selected rich HTML. This tends to preserve hyperlinks
     // better in email clients than async clipboard APIs.
-    copied = legacyRichCopy(fullHtml, fullPlain);
+    copied = legacyRichCopy(fullHtml, fullPlain, fullRtf);
 
     // 2. ClipboardItem — HTML+plain fallback
     if (!copied && navigator.clipboard && window.ClipboardItem) {
       try {
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            'text/html':  new Blob([fullHtml],  { type: 'text/html' }),
-            'text/plain': new Blob([fullPlain], { type: 'text/plain' })
-          })
-        ]);
+        const clipboardData = {
+          'text/plain': new Blob([fullPlain], { type: 'text/plain' }),
+          'text/html': new Blob([fullHtml], { type: 'text/html' })
+        };
+
+        if (window.ClipboardItem && typeof ClipboardItem.supports === 'function' && ClipboardItem.supports('text/rtf')) {
+          clipboardData['text/rtf'] = new Blob([fullRtf], { type: 'text/rtf' });
+        }
+
+        await navigator.clipboard.write([new ClipboardItem(clipboardData)]);
         copied = true;
       } catch (_) {}
     }
