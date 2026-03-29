@@ -1293,35 +1293,11 @@ If any item fails, rewrite before outputting.`;
     return text.replace(/the video I recorded/gi, `the video I recorded: ${VIDEO_URL}`);
   }
 
-  function escapeRtf(str) {
-    return str
-      .replace(/\\/g, '\\\\')
-      .replace(/{/g, '\\{')
-      .replace(/}/g, '\\}')
-      .replace(/\r\n|\r|\n/g, '\\line ');
+  function isMobileDevice() {
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
   }
 
-  function buildBodyRtf(plain) {
-    const escaped = escapeRtf(plain);
-    return escaped.replace(
-      /the video I recorded/gi,
-      `the {\\field{\\*\\fldinst{HYPERLINK "${VIDEO_URL}"}}{\\fldrslt{\\ul\\cf1 video}}} I recorded`
-    );
-  }
-
-  function buildFullRtf() {
-    return `{\\rtf1\\ansi\\deff0
-{\\fonttbl{\\f0 Arial;}}
-{\\colortbl;\\red124\\green58\\blue237;}
-\\fs28
-\\b To:\\b0 ${escapeRtf(currentEmail)}\\par
-\\b Subject:\\b0 ${escapeRtf(emailSubject)}\\par
-\\par
-${buildBodyRtf(emailBody)}
-}`;
-  }
-
-  function legacyRichCopy(html, plain, rtf) {
+  function legacyRichCopy(html, plain) {
     const container = document.createElement('div');
     container.contentEditable = 'true';
     container.setAttribute('aria-hidden', 'true');
@@ -1342,7 +1318,6 @@ ${buildBodyRtf(emailBody)}
       event.preventDefault();
       event.clipboardData.setData('text/html', html);
       event.clipboardData.setData('text/plain', plain);
-      try { event.clipboardData.setData('text/rtf', rtf); } catch (_) {}
       copied = true;
     };
 
@@ -1425,29 +1400,28 @@ ${bodyHtml}
 
     // Plain-text version includes the full closing and the raw URL as a fallback
     const fullPlain = `To: ${currentEmail}\nSubject: ${emailSubject}\n\n${withVideoUrl(emailBody)}`;
-    const fullRtf = buildFullRtf();
 
     let copied = false;
+    const isMobile = isMobileDevice();
 
-    // 1. Copy event + selected rich HTML. This tends to preserve hyperlinks
-    // better in email clients than async clipboard APIs.
-    copied = legacyRichCopy(fullHtml, fullPlain, fullRtf);
-
-    // 2. ClipboardItem — HTML+plain fallback
-    if (!copied && navigator.clipboard && window.ClipboardItem) {
+    // On iPhone/iPad, WebKit prefers the first clipboard type as the
+    // highest-fidelity representation, so write HTML first.
+    if (navigator.clipboard && window.ClipboardItem) {
       try {
-        const clipboardData = {
-          'text/plain': new Blob([fullPlain], { type: 'text/plain' }),
-          'text/html': new Blob([fullHtml], { type: 'text/html' })
-        };
+        const clipboardItem = new ClipboardItem({
+          'text/html': new Blob([fullHtml], { type: 'text/html' }),
+          'text/plain': new Blob([fullPlain], { type: 'text/plain' })
+        });
 
-        if (window.ClipboardItem && typeof ClipboardItem.supports === 'function' && ClipboardItem.supports('text/rtf')) {
-          clipboardData['text/rtf'] = new Blob([fullRtf], { type: 'text/rtf' });
-        }
-
-        await navigator.clipboard.write([new ClipboardItem(clipboardData)]);
+        await navigator.clipboard.write([clipboardItem]);
         copied = true;
       } catch (_) {}
+    }
+
+    // Desktop browsers tend to handle the legacy copy event well, but on some
+    // phones it can produce odd paste results, so keep it as a non-mobile fallback.
+    if (!copied && !isMobile) {
+      copied = legacyRichCopy(fullHtml, fullPlain);
     }
 
     // 3. writeText — reliable plain-text fallback
