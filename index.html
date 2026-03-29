@@ -938,63 +938,36 @@ Why: [1-2 sentence reasoning for why cold outreach specifically would help this 
 EMAIL ANGLE: [2-3 sentences on how to approach this person. What feels like a natural conversation starter?]`;
   }
 
-  const CLAUDE_SYSTEM = `ROLE: You are Tanim, an independent video editor and outreach specialist. Write SHORT, SIMPLE, FRIENDLY emails. Like texting a friend. Not formal. Not long.
+  const CLAUDE_SYSTEM = `ROLE: You are Tanim, an independent video editor and outreach specialist. Write SHORT, PUNCHY emails. Like a quick personal note to a friend. Warm and genuine.
 
-TWO CORE SERVICES (mention both, but keep it simple):
+TWO SERVICES:
 1. VIDEO PRODUCTION - Editing, thumbnails, shorts, distribution
-2. COLD OUTREACH - Building client pipelines via email
+2. COLD OUTREACH - Pipeline building via email
 
-YOUR VOICE:
-- Warm and casual (they helped you, you watched their work)
-- Simple words, short sentences (max 15 words per sentence)
-- Helpful, not salesy
-- Use "I" not "we"
-- Like a real person, not a business
+VOICE: Real person. Short sentences. Helpful, not salesy. Use "I" not "we". No corporate speak.
 
-NEVER USE:
-❌ "I hope this email finds you well" | "Dear Mr." | Corporate language
-❌ "Quick question" | "Leverage/Synergy" | "Founders like you"
-❌ "Can I help?" | "I love your content!" | Criticism
+EMAIL RULES:
+✅ 100-140 words MAXIMUM (including closing)
+✅ 3 short paragraphs only
+✅ Short sentences - max 12 words each
+✅ Plain text ONLY - no bold, no markdown, no formatting
+✅ Conversational tone
+✅ Scannable in 20 seconds
 
-EMAIL MUST BE:
-✅ 80-110 words total (excluding closing)
-✅ 3 paragraphs, 2-3 lines each (SHORT paragraphs only)
-✅ Short sentences (max 15 words)
-✅ Scannable in 30 seconds
-✅ Conversational and genuine
-
-STRUCTURE (3 Paragraphs):
-
-PARA 1 - OPENER (1-2 sentences):
-- Use 1 specific detail from their content you watched
-- Keep it short and genuine
-
-PARA 2 - SERVICES (2-3 short sentences):
-- Mention video + cold outreach together simply
-- Frame as helping, not selling
-
-PARA 3 - EXACT CLOSING (DO NOT VARY):
-If you're available, we can sit down and chat to figure out how we can make things work. For a quick recap, you can check out the video I recorded.
-Looking forward to chatting soon.
+STRUCTURE:
+PARA 1: One specific detail from their content. Proof you watched.
+PARA 2: Mention video editing + cold outreach together simply.
+PARA 3: Closing (exact):
+If you're available, we can sit down and chat to figure out how we can make things work. For a quick recap, you can check out the video I recorded. Looking forward to chatting soon.
 Best,
 Tanim
 
-CRITICAL: The closing above is EXACT. Do not change it. Do not add to it. Do not vary the wording.
-The word "video" in "the video I recorded" will be automatically hyperlinked in the interface.
-
-SUBJECT LINE:
-- 3-7 words only
-- Reference something specific about THEM
-- Creates "wait, what?" curiosity
-- Lowercase feels human
-- NO spam words (FREE, URGENT, CAPS)
+SUBJECT LINE: 3-7 words, specific to them, lowercase, creates curiosity.
 
 OUTPUT FORMAT:
-SUBJECT: [subject line here]
+SUBJECT: [subject line only]
 
-[email body here - exactly 3 paragraphs, short and simple]
-
-[EXACT closing text - copy/paste exactly as shown above]`;
+[3 paragraphs of email body with exact closing above - PLAIN TEXT ONLY]`;
 
   /* ── API Calls ──────────────────────────────── */
   async function callGemini(email) {
@@ -1145,10 +1118,13 @@ SUBJECT: [subject line here]
   // For the on-screen preview: safe HTML with "video" as a clickable link
   function buildBodyHtml(plain) {
     let html = escapeHtml(plain).replace(/\n/g, '<br>');
+
+    // Replace "the video I recorded" with hyperlinked version
     html = html.replace(
       /the video I recorded/gi,
       `the <a href="${VIDEO_URL}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px">video</a> I recorded`
     );
+
     return html;
   }
 
@@ -1165,30 +1141,31 @@ SUBJECT: [subject line here]
   function parseAndShowEmail(raw) {
     const lines = raw.trim().split('\n');
     let subjectLine = '';
-    let bodyStart   = 0;
+    let bodyLines = [];
+    let foundSubject = false;
+    let inBody = false;
 
     for (let i = 0; i < lines.length; i++) {
-      if (/^SUBJECT:\s*/i.test(lines[i])) {
+      if (!foundSubject && /^SUBJECT:\s*/i.test(lines[i])) {
         subjectLine = lines[i].replace(/^SUBJECT:\s*/i, '').trim();
-        for (let j = i + 1; j < lines.length; j++) {
-          if (lines[j].trim() === '') {
-            bodyStart = j + 1;
-            break;
-          }
-        }
-        break;
+        foundSubject = true;
+      } else if (foundSubject && !inBody && lines[i].trim() === '') {
+        // Skip blank line; next non-blank is start of body
+        inBody = true;
+      } else if (foundSubject && (inBody || lines[i].trim() !== '')) {
+        bodyLines.push(lines[i]);
       }
     }
 
-    const body = stripEmDashes(lines.slice(bodyStart).join('\n').trim());
-    subjectLine  = stripEmDashes(subjectLine);
+    const body = stripEmDashes(bodyLines.join('\n').trim());
+    subjectLine = stripEmDashes(subjectLine);
 
     emailSubject = subjectLine;
-    emailBody    = buildBodyPlain(body); // plain text goes into mailto
+    emailBody = buildBodyPlain(body);
 
-    document.getElementById('out-to').textContent       = currentEmail;
-    document.getElementById('out-subject').textContent  = subjectLine;
-    document.getElementById('out-body').innerHTML       = buildBodyHtml(body); // HTML for preview
+    document.getElementById('out-to').textContent = currentEmail;
+    document.getElementById('out-subject').textContent = subjectLine;
+    document.getElementById('out-body').innerHTML = buildBodyHtml(body);
     document.getElementById('dossier-text').textContent = dossierText;
 
     showStage('stage-5');
