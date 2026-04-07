@@ -1166,8 +1166,36 @@ If any item fails, rewrite before outputting.`;
     }, 45000, 'Gemini research');
     if (!resp.ok) throw new Error('Gemini API error: ' + resp.status);
     const data = await resp.json();
-    return data.response || data.text || data.content || data.result ||
-           (typeof data === 'string' ? data : JSON.stringify(data));
+    const responseText = data.response || data.text || data.content || data.result ||
+      (typeof data === 'string' ? data : JSON.stringify(data));
+
+    console.log('Raw Gemini response:', responseText);
+    return responseText;
+  }
+
+  function isGeminiErrorResponse(text) {
+    const normalized = String(text || '').trim();
+    const lower = normalized.toLowerCase();
+
+    return (
+      !normalized ||
+      lower.includes('api key') ||
+      lower.includes('invalid api key') ||
+      lower.includes('missing api key') ||
+      lower.includes('gemini api error') ||
+      lower.includes('error generating research') ||
+      lower.includes('failed to fetch') ||
+      lower.includes('quota') ||
+      lower.includes('rate limit') ||
+      lower.includes('permission denied') ||
+      lower.includes('unauthorized') ||
+      lower.includes('forbidden') ||
+      lower.includes('model not found') ||
+      lower.startsWith('error:') ||
+      lower.startsWith('{\"error\"') ||
+      lower.startsWith('{\"message\"') ||
+      (lower.includes('error') && !lower.includes('research dossier:'))
+    );
   }
 
   function buildClaudeUserPrompt(dossier) {
@@ -1253,6 +1281,11 @@ SUBJECT: [subject line here]
 
     if (geminiError) {
       showDisqualified('// ERROR: Research engine failed. ' + geminiError.message);
+      return;
+    }
+
+    if (isGeminiErrorResponse(geminiResult)) {
+      showDisqualified('// ERROR: Gemini research failed. Check the browser console for the raw Gemini response and verify the Worker API key / quota / permissions.');
       return;
     }
 
