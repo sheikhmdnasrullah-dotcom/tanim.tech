@@ -1118,15 +1118,16 @@ ALWAYS:
 ✅ Make the email feel like it could only be sent to this person
 
 OUTPUT FORMAT:
-Return raw JSON only. No markdown. No code fences. No extra text.
+First line: SUBJECT: [your one best subject line here]
 
-{
-  "subject": "[your one best subject line here]",
-  "body": "[the full email body with blank lines between paragraphs]"
-}
+Then one blank line.
 
-The "body" field must contain the full ready-to-send cold email in plain text.
-Use blank lines between paragraphs.
+Then the email body in plain text only.
+
+Do not use markdown.
+Do not use asterisks.
+Do not use bold.
+Do not add any explanation before or after the email.
 
 QUALITY CHECK:
 - Subject line is 3-7 words and personalized
@@ -1185,28 +1186,29 @@ Tanim`;
       ? `\n\nIMPORTANT CORRECTION:\nYour last draft failed validation for these reasons:\n- ${correction.join('\n- ')}\nRewrite it completely and fix every issue.\n`
       : '';
 
-    return `Here is the research dossier. Write the cold email now.
+    return `Write a cold email for this prospect. Here is the research dossier:
 
 ${dossier}
 ${correctionBlock}
-Return raw JSON only with exactly these keys:
-{
-  "subject": "string",
-  "body": "string"
-}
+Return the output in exactly this format and nothing else:
+SUBJECT: [subject line here]
+
+[plain text email body here]
 
 Rules:
-- "subject" must be one line only
-- "body" must be plain text only
-- Use blank lines between paragraphs
-- Use the exact closing provided in the system prompt
+- Include the full dossier context above in your reasoning
+- Do not ask me for more information
+- Do not mention missing information
+- Use plain text only
 - No markdown
-- No code fences
-- No extra keys
-- No explanation before or after the JSON`;
+- No asterisks
+- No bold
+- Use the exact closing provided in the system prompt`;
   }
 
   async function callClaude(dossier, correction = null) {
+    console.log('Claude dossier length:', (dossier || '').length);
+
     const resp = await fetch('https://tanim-ai-agent.nasrullahtanim.workers.dev/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1301,6 +1303,11 @@ Rules:
   async function runEmailGeneration() {
     showStage('stage-4');
 
+    if (!dossierText || !dossierText.trim()) {
+      showDisqualified('// ERROR: Research dossier is empty before Claude generation.');
+      return;
+    }
+
     const emailGenLines = [
       '// Passing dossier to Claude...',
       '// Analyzing proof of life details...',
@@ -1357,25 +1364,7 @@ Rules:
     return String(str || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   }
 
-  function extractJsonObject(raw) {
-    const text = normalizeLineEndings(raw).trim();
-    const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    const candidate = fencedMatch ? fencedMatch[1].trim() : text;
-
-    try {
-      return JSON.parse(candidate);
-    } catch (_) {}
-
-    const start = candidate.indexOf('{');
-    const end = candidate.lastIndexOf('}');
-    if (start !== -1 && end !== -1 && end > start) {
-      return JSON.parse(candidate.slice(start, end + 1));
-    }
-
-    throw new Error('Claude did not return valid JSON');
-  }
-
-  function fallbackParseEmail(raw) {
+  function parseClaudeEmail(raw) {
     const lines = normalizeLineEndings(raw).trim().split('\n');
     let subjectLine = '';
     let bodyLines = [];
@@ -1401,19 +1390,6 @@ Rules:
       subject: subjectLine,
       body: bodyLines.join('\n').trim()
     };
-  }
-
-  function parseClaudeEmail(raw) {
-    try {
-      const parsed = extractJsonObject(raw);
-      return {
-        subject: String(parsed.subject || '').trim(),
-        body: normalizeLineEndings(parsed.body || '').trim()
-      };
-    } catch (jsonError) {
-      console.warn('JSON parse failed, falling back to legacy parser:', jsonError);
-      return fallbackParseEmail(raw);
-    }
   }
 
   function countWords(text) {
@@ -1496,7 +1472,7 @@ Rules:
   function hyperlinkVideoPhrase(html, minimal) {
     const linkHtml = minimal
       ? `<a href="${VIDEO_URL}">video</a>`
-      : `<a href="${VIDEO_URL}" target="_blank" rel="noopener noreferrer" style="color:#0a84ff;text-decoration:underline;text-underline-offset:2px">video</a>`;
+      : `<a href="${VIDEO_URL}" target="_blank">video</a>`;
 
     return html.replace(/the video I recorded/gi, `the ${linkHtml} I recorded`);
   }
