@@ -1142,12 +1142,28 @@ QUALITY CHECK:
 If any item fails, rewrite before outputting.`;
 
   /* ── API Calls ──────────────────────────────── */
+  async function fetchWithTimeout(url, options, timeoutMs, timeoutLabel) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        throw new Error(timeoutLabel + ' timed out after ' + Math.round(timeoutMs / 1000) + 's');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function callGemini(email) {
-    const resp = await fetch('https://tanim-ai-agent.nasrullahtanim.workers.dev/gemini', {
+    const resp = await fetchWithTimeout('https://tanim-ai-agent.nasrullahtanim.workers.dev/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: buildGeminiPrompt(email) })
-    });
+    }, 45000, 'Gemini research');
     if (!resp.ok) throw new Error('Gemini API error: ' + resp.status);
     const data = await resp.json();
     return data.response || data.text || data.content || data.result ||
@@ -1168,7 +1184,7 @@ SUBJECT: [subject line here]
   async function callClaude(dossier) {
     console.log('Claude dossier length:', (dossier || '').length);
 
-    const resp = await fetch('https://tanim-ai-agent.nasrullahtanim.workers.dev/api/claude', {
+    const resp = await fetchWithTimeout('https://tanim-ai-agent.nasrullahtanim.workers.dev/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1180,7 +1196,7 @@ SUBJECT: [subject line here]
           content: buildClaudeUserPrompt(dossier)
         }]
       })
-    });
+    }, 45000, 'Claude email generation');
     if (!resp.ok) throw new Error('Claude API error: ' + resp.status);
     const data = await resp.json();
     const responseText = (data.content && data.content[0] && data.content[0].text) ||
@@ -1277,24 +1293,22 @@ SUBJECT: [subject line here]
       '// Crafting subject line...',
       '// Writing email body...',
       '// Applying voice guidelines...',
-      '// Running quality check...',
-      '// Email ready.'
+      '// Waiting for Claude response...'
     ];
 
+    runAnimation('email-gen-log', emailGenLines, 500).catch(() => {});
+
     let claudeResult = null;
-    let claudeError  = null;
-
-    await Promise.all([
-      runAnimation('email-gen-log', emailGenLines, 500),
-      callClaude(dossierText).then(r => { claudeResult = r; }).catch(e => { claudeError = e; })
-    ]);
-
-    if (claudeError) {
-      showDisqualified('// ERROR: Email generation failed. ' + claudeError.message);
+    try {
+      claudeResult = await callClaude(dossierText);
+    } catch (error) {
+      showDisqualified('// ERROR: Email generation failed. ' + error.message);
       return;
     }
 
     try {
+      await appendLine('email-gen-log', '// Claude response received.');
+      await appendLine('email-gen-log', '// Email ready.');
       parseAndShowEmail(claudeResult);
     } catch (error) {
       showDisqualified('// ERROR: Email parsing failed. ' + error.message);
