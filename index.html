@@ -1118,15 +1118,15 @@ ALWAYS:
 ✅ Make the email feel like it could only be sent to this person
 
 OUTPUT FORMAT:
-SUBJECT: [your one best subject line here]
+Return raw JSON only. No markdown. No code fences. No extra text.
 
-[Paragraph 1: Opener]
+{
+  "subject": "[your one best subject line here]",
+  "body": "[the full email body with blank lines between paragraphs]"
+}
 
-[Paragraph 2: Video editing service]
-
-[Paragraph 3: Cold email service]
-
-[Paragraph 4: Standard closing]
+The "body" field must contain the full ready-to-send cold email in plain text.
+Use blank lines between paragraphs.
 
 QUALITY CHECK:
 - Subject line is 3-7 words and personalized
@@ -1153,7 +1153,60 @@ If any item fails, rewrite before outputting.`;
            (typeof data === 'string' ? data : JSON.stringify(data));
   }
 
-  async function callClaude(dossier) {
+  const REQUIRED_CLOSING = `If you're available, we can sit down and chat to figure out how we can make things work. For a quick recap, you can check out the video I recorded.
+Looking forward to chatting soon.
+Best,
+Tanim`;
+
+  const FORBIDDEN_EMAIL_PHRASES = [
+    'i hope this email finds you well',
+    'dear mr.',
+    'dear ms.',
+    'i came across your content',
+    'take it to the next level',
+    'leverage',
+    'synergy',
+    'optimize',
+    'would you be available for a call',
+    'founders like you'
+  ];
+
+  const FORBIDDEN_SUBJECT_PHRASES = [
+    'quick question',
+    'opportunity for',
+    'partnership proposal',
+    'i love your content',
+    'can i help you',
+    'video editing services'
+  ];
+
+  function buildClaudeUserPrompt(dossier, correction) {
+    const correctionBlock = correction
+      ? `\n\nIMPORTANT CORRECTION:\nYour last draft failed validation for these reasons:\n- ${correction.join('\n- ')}\nRewrite it completely and fix every issue.\n`
+      : '';
+
+    return `Here is the research dossier. Write the cold email now.
+
+${dossier}
+${correctionBlock}
+Return raw JSON only with exactly these keys:
+{
+  "subject": "string",
+  "body": "string"
+}
+
+Rules:
+- "subject" must be one line only
+- "body" must be plain text only
+- Use blank lines between paragraphs
+- Use the exact closing provided in the system prompt
+- No markdown
+- No code fences
+- No extra keys
+- No explanation before or after the JSON`;
+  }
+
+  async function callClaude(dossier, correction = null) {
     const resp = await fetch('https://tanim-ai-agent.nasrullahtanim.workers.dev/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1163,7 +1216,7 @@ If any item fails, rewrite before outputting.`;
         system: CLAUDE_SYSTEM,
         messages: [{
           role: 'user',
-          content: 'Here is the research dossier. Write the cold email now:\n\n' + dossier
+          content: buildClaudeUserPrompt(dossier, correction)
         }]
       })
     });
@@ -1272,12 +1325,166 @@ If any item fails, rewrite before outputting.`;
       return;
     }
 
-    parseAndShowEmail(claudeResult);
+    try {
+      const parsed = parseClaudeEmail(claudeResult);
+      const validated = validateEmailDraft(parsed.subject, parsed.body);
+
+      if (validated.issues.length > 0) {
+        const correctedRaw = await callClaude(dossierText, validated.issues);
+        const correctedParsed = parseClaudeEmail(correctedRaw);
+        const correctedValidated = validateEmailDraft(correctedParsed.subject, correctedParsed.body);
+
+        if (correctedValidated.issues.length > 0) {
+          throw new Error('Generated email failed validation: ' + correctedValidated.issues.join('; '));
+        }
+
+        parseAndShowEmail(correctedValidated.subject, correctedValidated.body);
+        return;
+      }
+
+      parseAndShowEmail(validated.subject, validated.body);
+    } catch (error) {
+      showDisqualified('// ERROR: Email generation failed validation. ' + error.message);
+    }
   }
 
   function stripEmDashes(str) {
     // Replace em dash and its common lookalikes
     return str.replace(/\u2014/g, ',').replace(/\u2013/g, '-').replace(/--/g, '-');
+  }
+
+  function normalizeLineEndings(str) {
+    return String(str || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  }
+
+  function extractJsonObject(raw) {
+    const text = normalizeLineEndings(raw).trim();
+    const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const candidate = fencedMatch ? fencedMatch[1].trim() : text;
+
+    try {
+      return JSON.parse(candidate);
+    } catch (_) {}
+
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      return JSON.parse(candidate.slice(start, end + 1));
+    }
+
+    throw new Error('Claude did not return valid JSON');
+  }
+
+  function fallbackParseEmail(raw) {
+    const lines = normalizeLineEndings(raw).trim().split('\n');
+    let subjectLine = '';
+    let bodyLines = [];
+    let foundSubject = false;
+    let inBody = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (!foundSubject && /^SUBJECT:\s*/i.test(lines[i])) {
+        subjectLine = lines[i].replace(/^SUBJECT:\s*/i, '').trim();
+        foundSubject = true;
+      } else if (foundSubject && !inBody && lines[i].trim() === '') {
+        inBody = true;
+      } else if (foundSubject && (inBody || lines[i].trim() !== '')) {
+        bodyLines.push(lines[i]);
+      }
+    }
+
+    if (!subjectLine || bodyLines.length === 0) {
+      throw new Error('Claude response could not be parsed into subject/body');
+    }
+
+    return {
+      subject: subjectLine,
+      body: bodyLines.join('\n').trim()
+    };
+  }
+
+  function parseClaudeEmail(raw) {
+    try {
+      const parsed = extractJsonObject(raw);
+      return {
+        subject: String(parsed.subject || '').trim(),
+        body: normalizeLineEndings(parsed.body || '').trim()
+      };
+    } catch (jsonError) {
+      console.warn('JSON parse failed, falling back to legacy parser:', jsonError);
+      return fallbackParseEmail(raw);
+    }
+  }
+
+  function countWords(text) {
+    return text.trim().split(/\s+/).filter(Boolean).length;
+  }
+
+  function validateEmailDraft(subject, body) {
+    const issues = [];
+    const cleanSubject = stripEmDashes(String(subject || '').trim());
+    const cleanBody = stripEmDashes(normalizeLineEndings(body).trim());
+    const lowerSubject = cleanSubject.toLowerCase();
+    const lowerBody = cleanBody.toLowerCase();
+    const paragraphs = cleanBody.split(/\n\s*\n/).filter(Boolean);
+
+    if (!cleanSubject) issues.push('Missing subject line');
+    if (!cleanBody) issues.push('Missing email body');
+
+    const subjectWordCount = countWords(cleanSubject);
+    if (subjectWordCount < 3 || subjectWordCount > 7) {
+      issues.push('Subject line must be 3-7 words');
+    }
+
+    if (cleanSubject !== lowerSubject) {
+      issues.push('Subject line should be lowercase');
+    }
+
+    for (const phrase of FORBIDDEN_SUBJECT_PHRASES) {
+      if (lowerSubject.includes(phrase)) {
+        issues.push(`Subject line uses forbidden phrasing: "${phrase}"`);
+      }
+    }
+
+    for (const phrase of FORBIDDEN_EMAIL_PHRASES) {
+      if (lowerBody.includes(phrase)) {
+        issues.push(`Email body uses forbidden phrasing: "${phrase}"`);
+      }
+    }
+
+    if (/\bwe\b|\bour team\b/i.test(cleanBody)) {
+      issues.push('Email body should use "I" instead of "we"');
+    }
+
+    if (!/I'm Tanim, and I can help you with/i.test(cleanBody)) {
+      issues.push('Email body must include the exact intro "I\'m Tanim, and I can help you with..."');
+    }
+
+    if (!/(editing|editor|production|thumbnail|shorts|distribution)/i.test(cleanBody)) {
+      issues.push('Email body must mention the video editing service');
+    }
+
+    if (!/(cold outreach|cold email|pipeline|qualified leads|calendar)/i.test(cleanBody)) {
+      issues.push('Email body must mention the cold email service');
+    }
+
+    if (!cleanBody.includes(REQUIRED_CLOSING)) {
+      issues.push('Email body must include the exact required closing');
+    }
+
+    if (!cleanBody.includes('the video I recorded')) {
+      issues.push('Email body must include the exact phrase "the video I recorded"');
+    }
+
+    if (paragraphs.length > 4) {
+      issues.push('Email body must be 4 paragraphs max');
+    }
+
+    return {
+      issues,
+      subject: cleanSubject,
+      body: cleanBody
+    };
   }
 
   const VIDEO_URL = 'https://drive.google.com/file/d/1_YYH_5or_8JiDDjROygO_xzbyBwO1bjL/view?usp=sharing';
@@ -1381,60 +1588,13 @@ ${paragraphs}
     return copied;
   }
 
-  function parseAndShowEmail(raw) {
-    // Debug: log the raw response to help troubleshoot
-    console.log('Raw Claude response:', raw);
-
-    const lines = raw.trim().split('\n');
-    let subjectLine = '';
-    let bodyLines = [];
-    let foundSubject = false;
-    let inBody = false;
-
-    for (let i = 0; i < lines.length; i++) {
-      if (!foundSubject && /^SUBJECT:\s*/i.test(lines[i])) {
-        subjectLine = lines[i].replace(/^SUBJECT:\s*/i, '').trim();
-        foundSubject = true;
-      } else if (foundSubject && !inBody && lines[i].trim() === '') {
-        // Skip blank line; next non-blank is start of body
-        inBody = true;
-      } else if (foundSubject && (inBody || lines[i].trim() !== '')) {
-        bodyLines.push(lines[i]);
-      }
-    }
-
-    // Fallback: if subject wasn't found, try to extract it from the first paragraph
-    if (!subjectLine && lines.length > 0) {
-      console.warn('Subject line not found with standard format, trying fallback');
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim().length > 0) {
-          // Check if this looks like a subject line (short, no paragraph breaks)
-          if (lines[i].trim().length < 100 && !lines[i].includes('\n')) {
-            subjectLine = lines[i].trim();
-            // Collect remaining lines as body
-            bodyLines = lines.slice(i + 1);
-            break;
-          }
-        }
-      }
-    }
-
-    if (!subjectLine) {
-      console.error('Failed to parse subject line from Claude response');
-    }
-    if (bodyLines.length === 0) {
-      console.error('Failed to parse body from Claude response');
-    }
-
-    const body = stripEmDashes(bodyLines.join('\n').trim());
-    subjectLine = stripEmDashes(subjectLine);
-
-    emailSubject = subjectLine;
-    emailBody = buildBodyPlain(body);
+  function parseAndShowEmail(subjectLine, body) {
+    emailSubject = stripEmDashes(subjectLine);
+    emailBody = buildBodyPlain(stripEmDashes(body));
 
     document.getElementById('out-to').textContent = currentEmail;
-    document.getElementById('out-subject').textContent = subjectLine || '(parsing error - check console)';
-    document.getElementById('out-body').innerHTML = buildBodyHtml(body) || '<p style="color: red;">(parsing error - check console)</p>';
+    document.getElementById('out-subject').textContent = emailSubject || '(parsing error - check console)';
+    document.getElementById('out-body').innerHTML = buildBodyHtml(emailBody) || '<p style="color: red;">(parsing error - check console)</p>';
     document.getElementById('dossier-text').textContent = dossierText;
 
     showStage('stage-5');
