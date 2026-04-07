@@ -1154,59 +1154,18 @@ If any item fails, rewrite before outputting.`;
            (typeof data === 'string' ? data : JSON.stringify(data));
   }
 
-  const REQUIRED_CLOSING = `If you're available, we can sit down and chat to figure out how we can make things work. For a quick recap, you can check out the video I recorded.
-Looking forward to chatting soon.
-Best,
-Tanim`;
-
-  const FORBIDDEN_EMAIL_PHRASES = [
-    'i hope this email finds you well',
-    'dear mr.',
-    'dear ms.',
-    'i came across your content',
-    'take it to the next level',
-    'leverage',
-    'synergy',
-    'optimize',
-    'would you be available for a call',
-    'founders like you'
-  ];
-
-  const FORBIDDEN_SUBJECT_PHRASES = [
-    'quick question',
-    'opportunity for',
-    'partnership proposal',
-    'i love your content',
-    'can i help you',
-    'video editing services'
-  ];
-
-  function buildClaudeUserPrompt(dossier, correction) {
-    const correctionBlock = correction
-      ? `\n\nIMPORTANT CORRECTION:\nYour last draft failed validation for these reasons:\n- ${correction.join('\n- ')}\nRewrite it completely and fix every issue.\n`
-      : '';
-
-    return `Write a cold email for this prospect. Here is the research dossier:
+  function buildClaudeUserPrompt(dossier) {
+    return `Here is the research dossier. Write the cold email now:
 
 ${dossier}
-${correctionBlock}
+
 Return the output in exactly this format and nothing else:
 SUBJECT: [subject line here]
 
-[plain text email body here]
-
-Rules:
-- Include the full dossier context above in your reasoning
-- Do not ask me for more information
-- Do not mention missing information
-- Use plain text only
-- No markdown
-- No asterisks
-- No bold
-- Use the exact closing provided in the system prompt`;
+[plain text email body here]`;
   }
 
-  async function callClaude(dossier, correction = null) {
+  async function callClaude(dossier) {
     console.log('Claude dossier length:', (dossier || '').length);
 
     const resp = await fetch('https://tanim-ai-agent.nasrullahtanim.workers.dev/api/claude', {
@@ -1218,7 +1177,7 @@ Rules:
         system: CLAUDE_SYSTEM,
         messages: [{
           role: 'user',
-          content: buildClaudeUserPrompt(dossier, correction)
+          content: buildClaudeUserPrompt(dossier)
         }]
       })
     });
@@ -1336,25 +1295,9 @@ Rules:
     }
 
     try {
-      const parsed = parseClaudeEmail(claudeResult);
-      const validated = validateEmailDraft(parsed.subject, parsed.body);
-
-      if (validated.issues.length > 0) {
-        const correctedRaw = await callClaude(dossierText, validated.issues);
-        const correctedParsed = parseClaudeEmail(correctedRaw);
-        const correctedValidated = validateEmailDraft(correctedParsed.subject, correctedParsed.body);
-
-        if (correctedValidated.issues.length > 0) {
-          throw new Error('Generated email failed validation: ' + correctedValidated.issues.join('; '));
-        }
-
-        parseAndShowEmail(correctedValidated.subject, correctedValidated.body);
-        return;
-      }
-
-      parseAndShowEmail(validated.subject, validated.body);
+      parseAndShowEmail(claudeResult);
     } catch (error) {
-      showDisqualified('// ERROR: Email generation failed validation. ' + error.message);
+      showDisqualified('// ERROR: Email parsing failed. ' + error.message);
     }
   }
 
@@ -1410,6 +1353,14 @@ Rules:
       }
     }
 
+    if (!subjectLine) {
+      const firstMeaningfulLine = lines.find(line => line.trim().length > 0);
+      if (firstMeaningfulLine && !/^(here|sure|absolutely|email body|body:)/i.test(firstMeaningfulLine.trim())) {
+        subjectLine = firstMeaningfulLine.trim();
+        bodyLines = lines.slice(lines.indexOf(firstMeaningfulLine) + 1);
+      }
+    }
+
     bodyLines = bodyLines.filter((line, index, arr) => {
       if (index === 0) return line.trim() !== '';
       return true;
@@ -1422,77 +1373,6 @@ Rules:
     return {
       subject: subjectLine,
       body: bodyLines.join('\n').trim()
-    };
-  }
-
-  function countWords(text) {
-    return text.trim().split(/\s+/).filter(Boolean).length;
-  }
-
-  function validateEmailDraft(subject, body) {
-    const issues = [];
-    const cleanSubject = stripEmDashes(String(subject || '').trim());
-    const cleanBody = stripEmDashes(normalizeLineEndings(body).trim());
-    const lowerSubject = cleanSubject.toLowerCase();
-    const lowerBody = cleanBody.toLowerCase();
-    const paragraphs = cleanBody.split(/\n\s*\n/).filter(Boolean);
-
-    if (!cleanSubject) issues.push('Missing subject line');
-    if (!cleanBody) issues.push('Missing email body');
-
-    const subjectWordCount = countWords(cleanSubject);
-    if (subjectWordCount < 3 || subjectWordCount > 7) {
-      issues.push('Subject line must be 3-7 words');
-    }
-
-    if (cleanSubject !== lowerSubject) {
-      issues.push('Subject line should be lowercase');
-    }
-
-    for (const phrase of FORBIDDEN_SUBJECT_PHRASES) {
-      if (lowerSubject.includes(phrase)) {
-        issues.push(`Subject line uses forbidden phrasing: "${phrase}"`);
-      }
-    }
-
-    for (const phrase of FORBIDDEN_EMAIL_PHRASES) {
-      if (lowerBody.includes(phrase)) {
-        issues.push(`Email body uses forbidden phrasing: "${phrase}"`);
-      }
-    }
-
-    if (/\bwe\b|\bour team\b/i.test(cleanBody)) {
-      issues.push('Email body should use "I" instead of "we"');
-    }
-
-    if (!/I'm Tanim, and I can help you with/i.test(cleanBody)) {
-      issues.push('Email body must include the exact intro "I\'m Tanim, and I can help you with..."');
-    }
-
-    if (!/(editing|editor|production|thumbnail|shorts|distribution)/i.test(cleanBody)) {
-      issues.push('Email body must mention the video editing service');
-    }
-
-    if (!/(cold outreach|cold email|pipeline|qualified leads|calendar)/i.test(cleanBody)) {
-      issues.push('Email body must mention the cold email service');
-    }
-
-    if (!cleanBody.includes(REQUIRED_CLOSING)) {
-      issues.push('Email body must include the exact required closing');
-    }
-
-    if (!cleanBody.includes('the video I recorded')) {
-      issues.push('Email body must include the exact phrase "the video I recorded"');
-    }
-
-    if (paragraphs.length > 4) {
-      issues.push('Email body must be 4 paragraphs max');
-    }
-
-    return {
-      issues,
-      subject: cleanSubject,
-      body: cleanBody
     };
   }
 
@@ -1597,13 +1477,14 @@ ${paragraphs}
     return copied;
   }
 
-  function parseAndShowEmail(subjectLine, body) {
-    emailSubject = stripEmDashes(subjectLine);
-    emailBody = buildBodyPlain(stripEmDashes(body));
+  function parseAndShowEmail(raw) {
+    const parsed = parseClaudeEmail(raw);
+    emailSubject = stripEmDashes(parsed.subject);
+    emailBody = buildBodyPlain(stripEmDashes(parsed.body));
 
     document.getElementById('out-to').textContent = currentEmail;
-    document.getElementById('out-subject').textContent = emailSubject || '(parsing error - check console)';
-    document.getElementById('out-body').innerHTML = buildBodyHtml(emailBody) || '<p style="color: red;">(parsing error - check console)</p>';
+    document.getElementById('out-subject').textContent = emailSubject || '(missing subject line)';
+    document.getElementById('out-body').innerHTML = buildBodyHtml(emailBody) || '<p style="color: red;">(missing email body)</p>';
     document.getElementById('dossier-text').textContent = dossierText;
 
     showStage('stage-5');
