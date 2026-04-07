@@ -1382,6 +1382,9 @@ ${paragraphs}
   }
 
   function parseAndShowEmail(raw) {
+    // Debug: log the raw response to help troubleshoot
+    console.log('Raw Claude response:', raw);
+
     const lines = raw.trim().split('\n');
     let subjectLine = '';
     let bodyLines = [];
@@ -1400,6 +1403,29 @@ ${paragraphs}
       }
     }
 
+    // Fallback: if subject wasn't found, try to extract it from the first paragraph
+    if (!subjectLine && lines.length > 0) {
+      console.warn('Subject line not found with standard format, trying fallback');
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim().length > 0) {
+          // Check if this looks like a subject line (short, no paragraph breaks)
+          if (lines[i].trim().length < 100 && !lines[i].includes('\n')) {
+            subjectLine = lines[i].trim();
+            // Collect remaining lines as body
+            bodyLines = lines.slice(i + 1);
+            break;
+          }
+        }
+      }
+    }
+
+    if (!subjectLine) {
+      console.error('Failed to parse subject line from Claude response');
+    }
+    if (bodyLines.length === 0) {
+      console.error('Failed to parse body from Claude response');
+    }
+
     const body = stripEmDashes(bodyLines.join('\n').trim());
     subjectLine = stripEmDashes(subjectLine);
 
@@ -1407,8 +1433,8 @@ ${paragraphs}
     emailBody = buildBodyPlain(body);
 
     document.getElementById('out-to').textContent = currentEmail;
-    document.getElementById('out-subject').textContent = subjectLine;
-    document.getElementById('out-body').innerHTML = buildBodyHtml(body);
+    document.getElementById('out-subject').textContent = subjectLine || '(parsing error - check console)';
+    document.getElementById('out-body').innerHTML = buildBodyHtml(body) || '<p style="color: red;">(parsing error - check console)</p>';
     document.getElementById('dossier-text').textContent = dossierText;
 
     showStage('stage-5');
