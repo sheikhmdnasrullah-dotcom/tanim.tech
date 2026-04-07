@@ -1224,9 +1224,12 @@ Rules:
     });
     if (!resp.ok) throw new Error('Claude API error: ' + resp.status);
     const data = await resp.json();
-    return (data.content && data.content[0] && data.content[0].text) ||
-           data.response || data.text || data.result ||
-           (typeof data === 'string' ? data : JSON.stringify(data));
+    const responseText = (data.content && data.content[0] && data.content[0].text) ||
+      data.response || data.text || data.result ||
+      (typeof data === 'string' ? data : JSON.stringify(data));
+
+    console.log('Raw Claude response:', responseText);
+    return responseText;
   }
 
   /* ── Pipeline ───────────────────────────────── */
@@ -1364,8 +1367,15 @@ Rules:
     return String(str || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   }
 
+  function extractTextFromClaudeResponse(raw) {
+    const text = normalizeLineEndings(raw).trim();
+    const fencedMatch = text.match(/```(?:text|markdown)?\s*([\s\S]*?)```/i);
+    return fencedMatch ? fencedMatch[1].trim() : text;
+  }
+
   function parseClaudeEmail(raw) {
-    const lines = normalizeLineEndings(raw).trim().split('\n');
+    const text = extractTextFromClaudeResponse(raw);
+    const lines = text.split('\n');
     let subjectLine = '';
     let bodyLines = [];
     let foundSubject = false;
@@ -1381,6 +1391,29 @@ Rules:
         bodyLines.push(lines[i]);
       }
     }
+
+    if (!subjectLine) {
+      const inlineSubjectMatch = text.match(/(?:^|\n)\s*SUBJECT:\s*(.+)/i);
+      if (inlineSubjectMatch) {
+        subjectLine = inlineSubjectMatch[1].trim();
+        const subjectStart = text.search(/(?:^|\n)\s*SUBJECT:\s*/i);
+        const bodyStart = text.indexOf(subjectLine, subjectStart) + subjectLine.length;
+        bodyLines = text.slice(bodyStart).replace(/^\s+/, '').split('\n');
+      }
+    }
+
+    if (!subjectLine) {
+      const subjectOnlyFirstLine = lines.find(line => line.trim().length > 0);
+      if (subjectOnlyFirstLine && /^subject\b/i.test(subjectOnlyFirstLine.trim())) {
+        subjectLine = subjectOnlyFirstLine.replace(/^subject\s*:?\s*/i, '').trim();
+        bodyLines = lines.slice(lines.indexOf(subjectOnlyFirstLine) + 1);
+      }
+    }
+
+    bodyLines = bodyLines.filter((line, index, arr) => {
+      if (index === 0) return line.trim() !== '';
+      return true;
+    });
 
     if (!subjectLine || bodyLines.length === 0) {
       throw new Error('Claude response could not be parsed into subject/body');
